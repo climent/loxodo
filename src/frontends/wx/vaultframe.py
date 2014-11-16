@@ -144,9 +144,12 @@ class VaultFrame(wx.Frame):
 
         self.panel = wx.Panel(self, -1)
 
+        self._searchbox = wx.SearchCtrl(self.panel, size=(200, -1))
+        self._searchbox.ShowCancelButton(True)
         self.list = self.VaultListCtrl(self.panel, -1, size=(640, 240), style=wx.LC_REPORT|wx.SUNKEN_BORDER|wx.LC_VIRTUAL|wx.LC_EDIT_LABELS)
         self.list.Bind(wx.EVT_COMMAND_RIGHT_CLICK, self._on_list_contextmenu)
         self.list.Bind(wx.EVT_RIGHT_UP, self._on_list_contextmenu)
+        self.list.Bind(wx.EVT_CHAR, self._on_list_box_char)
 
         self.statusbar = self.CreateStatusBar(1, wx.ST_SIZEGRIP)
 
@@ -171,8 +174,8 @@ class VaultFrame(wx.Frame):
         self._recordmenu.Append(wx.ID_DELETE, _("&Delete\tCtrl+Back"))
         wx.EVT_MENU(self, wx.ID_DELETE, self._on_delete)
         self._recordmenu.AppendSeparator()
-        self._recordmenu.Append(wx.ID_EDIT, _("&Edit\tCtrl+E"))
-        wx.EVT_MENU(self, wx.ID_EDIT, self._on_edit)
+        self._recordmenu.Append(wx.ID_PROPERTIES, _("&Edit\tCtrl+E"))
+        wx.EVT_MENU(self, wx.ID_PROPERTIES, self._on_edit)
         self._recordmenu.AppendSeparator()
         temp_id = wx.NewId()
         self._recordmenu.Append(temp_id, _("Copy &Username\tCtrl+U"))
@@ -183,6 +186,9 @@ class VaultFrame(wx.Frame):
         temp_id = wx.NewId()
         self._recordmenu.Append(temp_id, _("Open UR&L\tCtrl+L"))
         wx.EVT_MENU(self, temp_id, self._on_open_url)
+        temp_id = wx.NewId()
+        self._recordmenu.Append(temp_id, _("Search &For Entry\tCtrl+F"))
+        wx.EVT_MENU(self, temp_id, self._on_search_for_entry)
         menu_bar = wx.MenuBar()
         menu_bar.Append(filemenu, _("&Vault"))
         menu_bar.Append(self._recordmenu, _("&Record"))
@@ -196,8 +202,6 @@ class VaultFrame(wx.Frame):
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         _rowsizer = wx.BoxSizer(wx.HORIZONTAL)
-        self._searchbox = wx.SearchCtrl(self.panel, size=(200, -1))
-        self._searchbox.ShowCancelButton(True)
         self.Bind(wx.EVT_SEARCHCTRL_CANCEL_BTN, self._on_search_cancel, self._searchbox)
         self.Bind(wx.EVT_TEXT, self._on_search_do, self._searchbox)
         self._searchbox.Bind(wx.EVT_CHAR, self._on_searchbox_char)
@@ -223,6 +227,17 @@ class VaultFrame(wx.Frame):
         self.vault_password = None
         self.vault = None
         self._is_modified = False
+
+    def _on_list_box_char(self, key_event):
+        """
+        Typing in the list box doesn't do anything, redirect it to the search box
+        """
+        if not (0 < key_event.GetKeyCode() < 256):
+            # Arrow keys, page up, etc -- let event propagate to default handler
+            key_event.Skip()
+            return
+        self._searchbox.SetFocus()
+        self._searchbox.EmulateKeyPress(key_event)
 
     def mark_modified(self):
         self._is_modified = True
@@ -356,7 +371,7 @@ if not, write to the Free Software Foundation, Inc.,
                       )
 
         about = wx.AboutDialogInfo()
-        about.SetIcon(wx.Icon(os.path.join(os.path.dirname(config.get_basescript()), "resources", "loxodo-icon.png"), wx.BITMAP_TYPE_PNG, 128, 128))
+        about.SetIcon(wx.Icon(os.path.join(os.path.dirname(os.path.realpath(config.get_basescript())), "resources", "loxodo-icon.png"), wx.BITMAP_TYPE_PNG, 128, 128))
         about.SetName("Loxodo")
         about.SetVersion("0.0-git")
         about.SetCopyright("Copyright (C) 2008 Christoph Sommer <mail@christoph-sommer.de>")
@@ -591,6 +606,13 @@ if not, write to the Free Software Foundation, Inc.,
             webbrowser.open(entry.url)
         except ImportError:
             self.statusbar.SetStatusText(_('Could not load python module "webbrowser" needed to open "%s"') % entry.url, 0)
+
+    def _on_search_for_entry(self, dummy):
+        """
+        Event handler: Fires when user chooses this menu item.
+        """
+        self._searchbox.SetFocus()
+        self._searchbox.SelectAll()
 
     def _on_search_do(self, dummy):
         """

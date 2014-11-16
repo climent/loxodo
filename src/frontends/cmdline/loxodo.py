@@ -25,6 +25,13 @@ import readline
 import cmd
 import re
 import time
+import csv
+try:
+    import pygtk
+    import gtk
+except ImportError:
+    pygtk = None
+    gtk = None
 
 from ...vault import Vault
 from ...config import config
@@ -146,7 +153,7 @@ class InteractiveConsole(cmd.Cmd):
             return
 
         print "\nCommands:"
-        print "  ".join(("ls", "show", 'add', 'mod', 'del', "save", 'quit', 'echo', 'sort', 'uuid', 'vi', 'tab', 'export', 'verbose'))
+        print "  ".join(("ls", "show", 'add', 'mod', 'del', "save", 'quit', 'echo', 'sort', 'uuid', 'vi', 'tab', 'verbose', 'export', 'import'))
         print
         print "echo passwords is %s" % self.echo
         print "uuid mode is %s" % self.uuid
@@ -215,7 +222,7 @@ class InteractiveConsole(cmd.Cmd):
         self.set_prompt()
 
     def do_export(self, line=None):
-        print "Exporting file " + self.vault_file_name + "..."
+        print "Exporting file %s ..." % self.vault_file_name
         self.vault.export(self.vault_password, self.vault_file_name)
 
     def generate_password(self):
@@ -445,6 +452,32 @@ class InteractiveConsole(cmd.Cmd):
 
         print ""
 
+    def do_import(self, line):
+        """
+        Adds a CSV importer, based on CSV file
+
+        Example: /home/user/data.csv
+        Columns: Title,User,Password,URL,Group
+        """
+        if not line:
+            cmd.Cmd.do_help(self, "import")
+            return
+
+        data = csv.reader(open(line, 'rb'))
+        try:
+            for row in data:
+                entry = self.vault.Record.create()
+                entry.title = row[0]
+                entry.user = row[1]
+                entry.passwd = row[2]
+                entry.url = row[3]
+                entry.group = row[4]
+                self.vault.records.append(entry)
+            self.vault_modified = True
+            print "Import completed, but not saved."
+        except csv.Error, e:
+            sys.exit('file %s, line %d: %s' % (line, data.line_num, e))
+
     def do_ls(self, line):
         """
         Show contents of this Vault. If an argument is passed a case
@@ -619,6 +652,12 @@ class InteractiveConsole(cmd.Cmd):
                 print "Last mod : %s" % time.strftime('%Y/%m/%d',time.gmtime(record.last_mod))
 
             print ""
+
+            if pygtk is not None and gtk is not None:
+                cb = gtk.clipboard_get()
+                if cb is not None:
+                  cb.set_text(record.passwd)
+                  cb.store()
 
     def complete_show(self, text, line, begidx, endidx):
         if not text:
