@@ -24,15 +24,20 @@ Quickstart
 ./loxodo.py -i
 	runs Loxodo in CLI Interactive mode
 
-Changelog
----------
+NOTES
+-----
 
-June 2011: Add more command line options to create new vault from shell, dump database to csv
-file. Make some small improvements to cmd loop to (tab completition, vi mode).
+This gitfork of loxodo focuses on CLI options. It tracks the upstream GUI, but
+has the added features to the CLI:
+
+* import and export databases from/to CSV files.
+* add/modify/delete database records.
+* search/list/show entries.
+* create random passwords, using a somehow sensible character policy.
 
 TODO
 ----
 
-* It might be good to be able to merge 2 databases together.
-* Add option to add users to vault from cli entirely.
-
+* Open and merge a different database into the existing one.
+* Integrate v3 and v4 databases.
+* Add multiple password support.
