@@ -24,6 +24,7 @@ import getpass
 import readline
 import cmd
 import re
+import time
 
 from ...vault import Vault
 from ...config import config
@@ -37,11 +38,51 @@ class InteractiveConsole(cmd.Cmd):
         self.vault_modified = False
         self.vault_status = ""
 
+        self.vi = False
+        self.tabcomp = True
+        self.echo = False
+        self.mod = False
+        # options for sorting are 'alpha' and 'mod'
+        self.sort_key = 'alpha'
+        self.verbose = False
+
         cmd.Cmd.__init__(self)
         if sys.platform == "darwin":
             readline.parse_and_bind('bind ^I rl_complete')
         self.intro = 'Ready for commands. Type "help" or "help <command>" for help, type "quit" to quit.'
         self.prompt = "[none]> "
+
+    def create_vault(self):
+        if os.path.isfile(self.vault_file_name):
+            print "Overwriting %s ..." % self.vault_file_name
+            try:
+                answer = getpass.getpass("Continue? [y/N] >")
+                if answer.lower() != "y":
+                    print " exit requested... exiting."
+                    sys.exit(0)
+            except (KeyboardInterrupt, EOFError):
+                print " exit requested... exiting."
+                sys.exit(0)
+        else:
+            print "Creating %s ..." % self.vault_file_name
+
+        try:
+            while True:
+                self.vault_password = getpass.getpass("Vault password: ")
+                if self.vault_password == "":
+                    raise EOFError
+                pass2 = getpass.getpass("Re-type the password: ")
+                if self.vault_password == pass2:
+                    self.vault_modified = True
+                    break
+        except EOFError:
+            print "\n\nBye."
+            raise RuntimeError("No password given")
+
+        if os.path.isfile(self.vault_file_name):
+            Vault.create(self.vault_password, filename=self.vault_file_name)
+        self.vault = Vault(self.vault_password, filename=self.vault_file_name)
+        print "... Done.\n"
 
     def set_prompt(self):
         if self.vault_modified:
@@ -68,14 +109,11 @@ class InteractiveConsole(cmd.Cmd):
                 if self.vault_password == pass2:
                     self.vault_modified = True
                     break
-            if self.vault_password == "":
-                raise EOFError
         except EOFError:
             print "No password given\n\nBye."
             raise RuntimeError("No password given")
         try:
             self.vault = Vault(self.vault_password, filename=self.vault_file_name)
-            self.set_prompt()
         except Vault.BadPasswordError:
             print "Bad password."
             raise
@@ -90,6 +128,12 @@ class InteractiveConsole(cmd.Cmd):
     def postloop(self):
         print
 
+    def postcmd(self, stop, line):
+        if stop == True:
+            return True
+
+        self.set_prompt()
+
     def emptyline(self):
         pass
 
@@ -102,17 +146,28 @@ class InteractiveConsole(cmd.Cmd):
             return
 
         print "\nCommands:"
-        print "  ".join(("ls", "show", 'add', 'mod', 'del', "save", 'quit', 'echo', 'uuid'))
+        print "  ".join(("ls", "show", 'add', 'mod', 'del', "save", 'quit', 'echo', 'sort', 'uuid', 'vi', 'tab', 'export', 'verbose'))
         print
-        print "echo is %s" % self.echo
-        print "uuid is %s" % self.uuid
+        print "echo passwords is %s" % self.echo
+        print "uuid mode is %s" % self.uuid
+        print "sort criteria is %s" % self.sort_key
+        print "vi editing mode is %s" % self.vi
+        print "tab completion is %s" % self.tabcomp
+        print "vervose mode is %s" % self.verbose
         print
+
+    # This method should clear all data in self.vault.records because we
+    # can't control when will this be Garbadge collected we replace it
+    # for strange text
+    def clear_vault(self):
+        self.vault.clear_records()
 
     def do_quit(self, line):
         """
         Exits interactive mode.
         """
         self.do_save()
+        self.clear_vault()
         return True
 
     def do_save(self, line=None):
@@ -123,7 +178,6 @@ class InteractiveConsole(cmd.Cmd):
             self.vault.write_to_file(self.vault_file_name, self.vault_password)
             self.vault_modified = False
             print "Changes Saved"
-        self.set_prompt()
 
     def do_EOF(self, line):
         """
@@ -159,6 +213,10 @@ class InteractiveConsole(cmd.Cmd):
         self.vault_modified = True
         print "Entry Added, but vault not yet saved"
         self.set_prompt()
+
+    def do_export(self, line=None):
+        print "Exporting file " + self.vault_file_name + "..."
+        self.vault.export(self.vault_password, self.vault_file_name)
 
     def generate_password(self):
         from src.random_password import random_password as rp
@@ -239,9 +297,9 @@ class InteractiveConsole(cmd.Cmd):
 
         if pattern.search(line) is not None:
             uuid = line
-        
+
         match_records, nonmatch_records = self.mod_titles(title=title, uuid=uuid, user=user, group=group)
-            
+
         if match_records is None:
             print "No matches found."
             return
@@ -249,7 +307,7 @@ class InteractiveConsole(cmd.Cmd):
         if len(match_records) > 1:
             print "Too many records matched your search criteria"
             for record in match_records:
-                print "%s [%s] " % (record.title.encode('utf-8', 'replace'), record.user.encode('utf-8', 'replace')) 
+                print "%s [%s] " % (record.title.encode('utf-8', 'replace'), record.user.encode('utf-8', 'replace'))
                 return
 
         if len(match_records) == 1:
@@ -261,8 +319,6 @@ class InteractiveConsole(cmd.Cmd):
                 print "Entry Deleted, but vault not yet saved"
                 self.vault_modified = True
 
-        self.set_prompt()
-
         print ""
 
     def do_mod(self, line=None):
@@ -271,7 +327,7 @@ class InteractiveConsole(cmd.Cmd):
         """
         if not self.vault:
             raise RuntimeError("No vault opened")
-        
+
         vault_records = None
         match_records = None
         nomatch_records = None
@@ -299,7 +355,7 @@ class InteractiveConsole(cmd.Cmd):
                     user = line_elements[2]
 
         match_records, nonmatch_records = self.mod_titles(title=title, uuid=uuid, user=user, group=group)
-            
+
         if match_records is None:
             print "No matches found."
             return
@@ -307,7 +363,7 @@ class InteractiveConsole(cmd.Cmd):
         if len(match_records) > 1:
             print "Too many records matched your search criteria"
             for record in match_records:
-                print "%s [%s] " % (record.title.encode('utf-8', 'replace'), record.user.encode('utf-8', 'replace')) 
+                print "%s [%s] " % (record.title.encode('utf-8', 'replace'), record.user.encode('utf-8', 'replace'))
                 return
 
         _vault_modified = False
@@ -387,8 +443,6 @@ class InteractiveConsole(cmd.Cmd):
             print "Entry Modified, but vault not yet saved"
             self.vault_modified = True
 
-        self.set_prompt()
-
         print ""
 
     def do_ls(self, line):
@@ -400,24 +454,52 @@ class InteractiveConsole(cmd.Cmd):
         if not self.vault:
             raise RuntimeError("No vault opened")
 
+        line_text = "" 
         if line is not None:
+            line_text = " for \"%s\"" % line
             vault_records = self.find_titles(line)
         else:
             vault_records = self.vault.records[:]
-            vault_records.sort(lambda e1, e2: cmp(e1.title, e2.title))
 
         if vault_records is None:
-            print "No matches found."
+            print "No matches found%s." % line_text
             return
+
+        if self.sort_key == 'alpha':
+            vault_records.sort(lambda e1, e2: cmp(".".join([e1.group, e1.title]), ".".join([e2.group, e2.title])))
+        elif self.sort_key == 'mod':
+            vault_records.sort(lambda e1, e2: cmp(e1.last_mod, e2.last_mod))
 
         print ""
         print "[group.title] username"
-        print "----------------------"
+        if self.verbose:
+            print "URL: url"
+            print "Notes: notes"
+            print "Last mod: modification time"
+        print "-"*10
         for record in vault_records:
-            print "[%s.%s] %s " % (record.group.encode('utf-8', 'replace'),
-                                   record.title.encode('utf-8', 'replace'), 
-                                   record.user.encode('utf-8', 'replace')) 
+            print "[%s.%s] %s" % (record.group.encode('utf-8', 'replace'),
+                                   record.title.encode('utf-8', 'replace'),
+                                   record.user.encode('utf-8', 'replace'))
+            if self.verbose:
+                if record.url:
+                    print "    URL: %s" % (record.url.encode('utf-8', 'replace'))
+                if record.notes:
+                    print "    Notes: %s" % (record.notes.encode('utf-8', 'replace'))
+                if record.last_mod != 0:
+                    print "    Last mod: %s" % time.strftime('%Y/%m/%d',time.gmtime(record.last_mod))
+
         print ""
+
+    def do_sort(self, line=None):
+        """
+        Change status of sort key
+        """
+        if self.sort_key == 'alpha':
+            self.sort_key = 'mod'
+        else:
+            self.sort_key = 'alpha'
+        print "sort key is %s" % self.sort_key
 
     def do_uuid(self, line=None):
         """
@@ -443,6 +525,40 @@ class InteractiveConsole(cmd.Cmd):
             self.echo = False
         print "echo is %s" % self.echo
 
+    def do_vi(self, line=None):
+        """
+        Set vi editing mode for commandline
+        """
+        if self.vi == False:
+            self.vi = True
+            readline.parse_and_bind('set editing-mode vi')
+        else:
+            self.vi = False
+            readline.parse_and_bind('set editing-mode emacs')
+
+        print "Vi Editing mode is %s" % self.vi
+
+    def do_verbose(self, line=None):
+        """
+        Enable verbose listing of vault entries
+        """
+        self.verbose = not self.verbose
+
+        print "Verbose listing mode is %s" % self.verbose
+
+    def do_tab(self, line=None):
+        """
+        Enable Tab completion for cmd interface
+        """
+        if self.tabcomp == False:
+            self.tabcomp = True
+            readline.parse_and_bind('tab: complete')
+        else:
+            self.tabcomp = False
+            readline.parse_and_bind('tab: noncomplete')
+
+        print "TAB completion mode is %s" % self.tabcomp
+
     def do_show(self, line, echo=True, passwd=False, uuid=False):
         """
         Show the specified entry (including its password).
@@ -456,7 +572,7 @@ class InteractiveConsole(cmd.Cmd):
         try:
             matches = self.find_titles(line)
             if matches is None:
-                print 'No entry found for "%s"' % line
+                print "No entry found for \"%s\"." % line
                 return
         except:
             return
@@ -489,15 +605,10 @@ class InteractiveConsole(cmd.Cmd):
             if record.url:
                 print "URL      : %s" % record.url.encode('utf-8', 'replace')
 
-            print ""
+            if record.last_mod != 0:
+                print "Last mod : %s" % time.strftime('%Y/%m/%d',time.gmtime(record.last_mod))
 
-            if self.pygtk and self.gtk:
-                try:
-                    cb = self.gtk.clipboard_get()
-                    cb.set_text(record.passwd)
-                    cb.store()
-                except:
-                    pass
+            print ""
 
     def complete_show(self, text, line, begidx, endidx):
         if not text:
@@ -578,12 +689,16 @@ def main(argv):
     usage = "usage: %prog [options] [Vault.psafe3]"
     parser = OptionParser(usage=usage)
     parser.add_option("-l", "--ls", dest="do_ls", default=False, action="store_true", help="list contents of vault")
-    parser.add_option("-s", "--show", dest="do_show", default=None, action="store", type="string", help="show entries matching REGEX", metavar="REGEX")
-    parser.add_option("-i", "--interactive", dest="interactive", default=False, action="store_true", help="use command line interface")
-    parser.add_option("-c", "--console_only", dest="console", default=False, action="store_true", help="disable interaction with clipboard")
-    parser.add_option("-p", "--password", dest="passwd", default=False, action="store_true", help="auto adds password to clipboard. (GTK Only)")
-    parser.add_option("-e", "--echo", dest="echo", default=False, action="store_true", help="passwords are displayed on the screen")
-    parser.add_option("-u", "--uuid", dest="uuid", default=False, action="store_true", help="show uuid while processing passwords")
+    parser.add_option("-s", "--show", dest="do_show", default=None, action="store", type="string", help="Show entries matching REGEX", metavar="REGEX")
+    parser.add_option("-i", "--interactive", dest="interactive", default=False, action="store_true", help="Use command line interface")
+    parser.add_option("-n", "--new", dest="create_new_vault", default=False, action="store_true", help="Create and initialize new Vault.")
+    parser.add_option("-c", "--console_only", dest="console", default=False, action="store_true", help="Disable interaction with clipboard")
+    parser.add_option("-p", "--password", dest="passwd", default=False, action="store_true", help="Auto adds password to clipboard. (GTK Only)")
+    parser.add_option("-e", "--echo", dest="echo", default=False, action="store_true", help="Passwords are displayed on the screen")
+    parser.add_option("-u", "--uuid", dest="uuid", default=False, action="store_true", help="Show uuid while processing passwords")
+    parser.add_option("-x", "--export", dest="export", default=False, action="store_true", help="Export database to csv")
+
+
     (options, args) = parser.parse_args()
 
     interactiveConsole = InteractiveConsole()
@@ -601,40 +716,38 @@ def main(argv):
     else:
         interactiveConsole.vault_file_name = args[0]
 
-    interactiveConsole.pygtk = None
-    interactiveConsole.gtk = None
-    if not options.console:
-        try:
-            import pygtk
-            import gtk
-            interactiveConsole.pygtk = pygtk
-            interactiveConsole.gtk = gtk
-        except ImportError:
-            pass
-
-    while True:
-        try:
-            interactiveConsole.open_vault()
-            config.save()
-            break
-        except Vault.BadPasswordError:
-            pass
-        except KeyboardInterrupt:
-            print "^C pressed... exiting."
-            sys.exit(0)
-        except:
-            sys.exit(1)
-    if options.do_ls:
-        interactiveConsole.do_ls("")
-    elif options.do_show:
-        interactiveConsole.do_show(options.do_show, options.echo, options.passwd)
+    if not os.path.isfile(interactiveConsole.vault_file_name) or options.create_new_vault:
+        interactiveConsole.create_vault()
     else:
-        interactiveConsole.uuid = options.uuid
-        interactiveConsole.echo = options.echo
-        try:
-            interactiveConsole.cmdloop()
-        except KeyboardInterrupt:
-            print "^C pressed... exiting."
+        while True:
+            try:
+                interactiveConsole.open_vault()
+                config.save()
+                break
+            except Vault.BadPasswordError:
+                pass
+            except KeyboardInterrupt:
+                print "^C pressed... exiting."
+                sys.exit(0)
+            except:
+                sys.exit(1)
+        if options.do_ls:
+            interactiveConsole.do_ls("")
+            sys.exit(0)
+        elif options.do_show:
+            interactiveConsole.do_show(options.do_show, options.echo, options.passwd)
+            sys.exit(0)
+        elif options.export:
+            interactiveConsole.do_export()
+            sys.exit(0)
+
+    interactiveConsole.uuid = options.uuid
+    interactiveConsole.echo = options.echo
+    interactiveConsole.set_prompt()
+    try:
+        interactiveConsole.cmdloop()
+    except KeyboardInterrupt:
+        print "^C pressed... exiting."
 
     sys.exit(0)
 
