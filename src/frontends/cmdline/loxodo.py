@@ -44,8 +44,7 @@ class InteractiveConsole(cmd.Cmd):
         self.mod = False
         # options for sorting are 'alpha' and 'mod'
         self.sort_key = 'alpha'
-        # options are brief or verbose
-        self.output = 'brief'
+        self.verbose = False
 
         cmd.Cmd.__init__(self)
         if sys.platform == "darwin":
@@ -54,14 +53,35 @@ class InteractiveConsole(cmd.Cmd):
         self.prompt = "[none]> "
 
     def create_vault(self):
-        print "Creating " + self.vault_file_name + "..."
+        if os.path.isfile(self.vault_file_name):
+            print "Overwriting %s ..." % self.vault_file_name
+            try:
+                answer = getpass.getpass("Continue? [y/N] >")
+                if answer.lower() != "y":
+                    print " exit requested... exiting."
+                    sys.exit(0)
+            except (KeyboardInterrupt, EOFError):
+                print " exit requested... exiting."
+                sys.exit(0)
+        else:
+            print "Creating %s ..." % self.vault_file_name
+
         try:
-            self.vault_password = getpass.getpass("Vault password: ")
+            while True:
+                self.vault_password = getpass.getpass("Vault password: ")
+                if self.vault_password == "":
+                    raise EOFError
+                pass2 = getpass.getpass("Re-type the password: ")
+                if self.vault_password == pass2:
+                    self.vault_modified = True
+                    break
         except EOFError:
             print "\n\nBye."
             raise RuntimeError("No password given")
 
-        Vault.create(self.vault_password, filename=self.vault_file_name)
+        if os.path.isfile(self.vault_file_name):
+            Vault.create(self.vault_password, filename=self.vault_file_name)
+        self.vault = Vault(self.vault_password, filename=self.vault_file_name)
         print "... Done.\n"
 
     def set_prompt(self):
@@ -72,16 +92,25 @@ class InteractiveConsole(cmd.Cmd):
         self.prompt = "[%s%s]> " % (os.path.basename(self.vault_file_name), self.vault_status)
 
     def open_vault(self):
+        creating_vault = False
         vault_action = "Opening"
         if not os.path.isfile(self.vault_file_name):
+            creating_vault = True
             vault_action = "Creating"
         print "%s %s ..." % (vault_action, self.vault_file_name)
         try:
-            self.vault_password = getpass.getpass("Vault password: ")
-            if self.vault_password == "":
-                raise EOFError
+            while True:
+                self.vault_password = getpass.getpass("Vault password: ")
+                if self.vault_password == "":
+                    raise EOFError
+                if not creating_vault:
+                    break
+                pass2 = getpass.getpass("Re-type the password: ")
+                if self.vault_password == pass2:
+                    self.vault_modified = True
+                    break
         except EOFError:
-            print "\n\nBye."
+            print "No password given\n\nBye."
             raise RuntimeError("No password given")
         try:
             self.vault = Vault(self.vault_password, filename=self.vault_file_name)
@@ -110,22 +139,21 @@ class InteractiveConsole(cmd.Cmd):
 
     def do_help(self, line):
         """
-        Displays this message.
+        Displays the help message.
         """
         if line:
             cmd.Cmd.do_help(self, line)
             return
 
         print "\nCommands:"
-        print "  ".join(("ls", "show", 'add', 'mod', 'del', "save", 'quit', 'echo', 'sort', 'output', 'uuid', 'vi', 'tab', 'export'))
+        print "  ".join(("ls", "show", 'add', 'mod', 'del', "save", 'quit', 'echo', 'sort', 'uuid', 'vi', 'tab', 'export', 'verbose'))
         print
-        print "echo is %s" % self.echo
-        print "uuid is %s" % self.uuid
-        print "sort is %s" % self.sort_key
-        print "output is %s" % self.output
-        print
+        print "echo passwords is %s" % self.echo
+        print "uuid mode is %s" % self.uuid
+        print "sort criteria is %s" % self.sort_key
         print "vi editing mode is %s" % self.vi
-        print "tab completition is %s" % self.tabcomp
+        print "tab completion is %s" % self.tabcomp
+        print "vervose mode is %s" % self.verbose
         print
 
     # This method should clear all data in self.vault.records because we
@@ -155,6 +183,10 @@ class InteractiveConsole(cmd.Cmd):
         """
         Exits interactive mode.
         """
+        if self.vault_modified:
+            print " pressed... changes were not saved!"
+        else:
+            print " pressed... exiting."
         return True
 
     def do_add(self, line=None):
@@ -180,61 +212,73 @@ class InteractiveConsole(cmd.Cmd):
         self.vault.records.append(entry)
         self.vault_modified = True
         print "Entry Added, but vault not yet saved"
+        self.set_prompt()
 
     def do_export(self, line=None):
         print "Exporting file " + self.vault_file_name + "..."
         self.vault.export(self.vault_password, self.vault_file_name)
 
+    def generate_password(self):
+        from src.random_password import random_password as rp
+        #TODO(climent): move the options to the config file
+
+        def print_policy(policy):
+            for i in policy:
+                print '%s: %s' % (policy[i][0], policy[i][1])
+
+        policy = {
+            'L': ['[L]efthand', True],
+            'R': ['[R]ighthand', True],
+            'U': ['[U]ppercase', True],
+            'l': ['[l]owercase', True],
+            'N': ['[N]umbers', True],
+            'S': ['[S]ymbols', True],
+            's': ['[s]imple symbols', True]
+            }
+
+        response = None
+        while True:
+            if not response:
+                passwd = rp().generate_password(password_policy=policy, pwlength=config.pwlength)
+                print "Generated password: %s" % passwd
+            response = getpass._raw_input('Accept [y/./ENTER] > ')
+            if response in policy:
+                policy[response][1] = not policy[response][1]
+                print_policy(policy)
+                continue
+            if response == ".":
+                print_policy(policy)
+            if response.lower() == "y":
+                return passwd
+
     def prompt_password(self, old_password=None):
-        created_random_password = False
+        message = "Type new password. [.] for none, [ENTER] for random."
+        if old_password:
+            message = "Type new password. [.] for none, [..] to keep the same, [ENTER] for random."
 
         while True:
-            message = "New password. [.] for none, [ENTER] for random.\n"
-            if old_password is not None:
-                message = "New password. [.] for none, [..] to keep the same. [ENTER] for random\n"
-            passwd = getpass.getpass("%sPassword: " % message)
-            if passwd == "":
-                from src.random_password import random_password
-                #TODO(climent): move the options to the config file
-                password_policy = {'L': True, 'R': True, 'U': True, 'l': True, '2': True, 's': True, 'S': True}
-                while True:
-                    passwd = random_password().generate_password(password_policy)
-                    created_random_password = True
-                    print "Generated password: %s" % passwd
-                    while True:
-                        accept_password = getpass._raw_input('Enter [y] to accept, [ENTER] for random ')
-                        if accept_password in password_policy:
-                            if password_policy[accept_password] is True:
-                                password_policy[accept_password] = False
-                            else:
-                                password_policy[accept_password] = True
-                            print password_policy
-                        else:
-                            break
-                    if accept_password.lower() == "y":
-                        break
-                break
-            elif old_password is not None and passwd == "..":
+            passwd = getpass.getpass("%s\nPassword: " % message)
+            if not passwd:
+                return self.generate_password()
+            if old_password and passwd == "..":
                 return old_password
-            elif passwd == '.':
-                passwd = ''
-            if created_random_password is False:
-                passwd2 = getpass.getpass("Re-Type Password: ")
-                if passwd2 == '.':
-                    passwd2 = ''
-                if passwd != passwd2:
-                    print "Passwords don't match"
-                elif passwd == "":
-                    empty_passwd = getpass.getpass("Password is empty. Enter Y to accept ")
-                    if empty_passwd.lower() == "y":
-                        break
-                else:
-                    break
-        return passwd
+            if passwd == '.':
+                passwd2 = getpass.getpass("Enter y to accept an empty password or \".\" to use a period as a password.")
+                if passwd2.lower() == "y":
+                    return ""
+                if passwd2 == ".":
+                    return "."
+                continue
+            if getpass.getpass("Re-Type Password: ") == passwd:
+                return passwd
+            else:
+                print "Passwords don't match!!"
 
     def do_del(self, line=None):
         """
         Delete an entry from the vault.
+
+        If no matches can be found, try using UUIDs.
         """
         if not self.vault:
             raise RuntimeError("No vault opened")
@@ -403,37 +447,41 @@ class InteractiveConsole(cmd.Cmd):
 
     def do_ls(self, line):
         """
-        Show contents of this Vault. If an argument is added a case insensitive
-        search of titles is done, entries can also be specified as regular expressions.
+        Show contents of this Vault. If an argument is passed a case
+        insensitive search of titles is done, entries can also be specified as
+        regular expressions.
         """
         if not self.vault:
             raise RuntimeError("No vault opened")
 
+        line_text = "" 
         if line is not None:
+            line_text = " for \"%s\"" % line
             vault_records = self.find_titles(line)
         else:
             vault_records = self.vault.records[:]
 
         if vault_records is None:
-            print "No matches found."
+            print "No matches found%s." % line_text
             return
 
         if self.sort_key == 'alpha':
-            vault_records.sort(lambda e1, e2: cmp(e1.title, e2.title))
+            vault_records.sort(lambda e1, e2: cmp(".".join([e1.group, e1.title]), ".".join([e2.group, e2.title])))
         elif self.sort_key == 'mod':
             vault_records.sort(lambda e1, e2: cmp(e1.last_mod, e2.last_mod))
 
         print ""
         print "[group.title] username"
-        print "URL: url"
-        print "Notes: notes"
-        print "Last mod: modification time"
+        if self.verbose:
+            print "URL: url"
+            print "Notes: notes"
+            print "Last mod: modification time"
         print "-"*10
         for record in vault_records:
             print "[%s.%s] %s" % (record.group.encode('utf-8', 'replace'),
                                    record.title.encode('utf-8', 'replace'),
                                    record.user.encode('utf-8', 'replace'))
-            if self.output == 'verbose':
+            if self.verbose:
                 if record.url:
                     print "    URL: %s" % (record.url.encode('utf-8', 'replace'))
                 if record.notes:
@@ -465,7 +513,9 @@ class InteractiveConsole(cmd.Cmd):
 
     def do_uuid(self, line=None):
         """
-        Change status of uuid
+        Change status of the uuid setting.
+
+        If True, shows the UUID of the vault entries when showing the output.
         """
         if self.uuid == False:
             self.uuid = True
@@ -475,7 +525,9 @@ class InteractiveConsole(cmd.Cmd):
 
     def do_echo(self, line=None):
         """
-        Change status of echo
+        Change status of the echo setting.
+
+        If False, hide the password field when showing the output.
         """
         if self.echo == False:
             self.echo = True
@@ -496,9 +548,17 @@ class InteractiveConsole(cmd.Cmd):
 
         print "Vi Editing mode is %s" % self.vi
 
+    def do_verbose(self, line=None):
+        """
+        Enable verbose listing of vault entries
+        """
+        self.verbose = not self.verbose
+
+        print "Verbose listing mode is %s" % self.verbose
+
     def do_tab(self, line=None):
         """
-        Enable Tab completition for cmd interface
+        Enable Tab completion for cmd interface
         """
         if self.tabcomp == False:
             self.tabcomp = True
@@ -507,20 +567,24 @@ class InteractiveConsole(cmd.Cmd):
             self.tabcomp = False
             readline.parse_and_bind('tab: noncomplete')
 
-        print "TAB completition mode is %s" % self.tabcomp
+        print "TAB completion mode is %s" % self.tabcomp
 
     def do_show(self, line, echo=True, passwd=False, uuid=False):
         """
         Show the specified entry (including its password).
-        A case insenstive search of titles is done, entries can also be specified as regular expressions.
+
+        A case insenstive search of titles is done, entries can also be
+        specified as regular expressions.
         """
         if not self.vault:
             raise RuntimeError("No vault opened")
 
-        matches = self.find_titles(line)
-
-        if matches is None:
-            print 'No entry found for "%s"' % line
+        try:
+            matches = self.find_titles(line)
+            if matches is None:
+                print "No entry found for \"%s\"." % line
+                return
+        except:
             return
 
         if self.echo is not None:
@@ -537,10 +601,10 @@ class InteractiveConsole(cmd.Cmd):
         for record in matches:
             if do_uuid == True:
                 print "[%s]" % record.uuid
-            print """[%s.%s]
-Username : %s""" % (record.group.encode('utf-8', 'replace'),
-                    record.title.encode('utf-8', 'replace'),
-                    record.user.encode('utf-8', 'replace'))
+            print ("[%s.%s]\nUsername : %s""" % 
+                (record.group.encode('utf-8', 'replace'),
+                 record.title.encode('utf-8', 'replace'),
+                 record.user.encode('utf-8', 'replace')))
 
             if do_echo is True:
                 print "Password : %s" % record.passwd.encode('utf-8', 'replace')
@@ -607,7 +671,11 @@ Username : %s""" % (record.group.encode('utf-8', 'replace'),
     def find_titles(self, regexp):
         "Finds titles, username, group, or combination of all 3 matching a regular expression. (Case insensitive)"
         matches = []
-        pat = re.compile(regexp, re.IGNORECASE)
+        try:
+            pat = re.compile(regexp, re.IGNORECASE)
+        except:
+            print "Invalid regexp: %s" % regexp
+            raise
         for record in self.vault.records:
             if pat.match(record.title) is not None:
                 matches.append(record)
@@ -658,21 +726,38 @@ def main(argv):
     else:
         interactiveConsole.vault_file_name = args[0]
 
-    if options.create_new_vault:
+    if not os.path.isfile(interactiveConsole.vault_file_name) or options.create_new_vault:
         interactiveConsole.create_vault()
     else:
-        interactiveConsole.open_vault()
+        while True:
+            try:
+                interactiveConsole.open_vault()
+                config.save()
+                break
+            except Vault.BadPasswordError:
+                pass
+            except KeyboardInterrupt:
+                print "^C pressed... exiting."
+                sys.exit(0)
+            except:
+                sys.exit(1)
         if options.do_ls:
             interactiveConsole.do_ls("")
+            sys.exit(0)
         elif options.do_show:
             interactiveConsole.do_show(options.do_show, options.echo, options.passwd)
+            sys.exit(0)
         elif options.export:
             interactiveConsole.do_export()
-        else:
-            interactiveConsole.uuid = options.uuid
-            interactiveConsole.echo = options.echo
-            interactiveConsole.set_prompt()
-            interactiveConsole.cmdloop()
+            sys.exit(0)
+
+    interactiveConsole.uuid = options.uuid
+    interactiveConsole.echo = options.echo
+    interactiveConsole.set_prompt()
+    try:
+        interactiveConsole.cmdloop()
+    except KeyboardInterrupt:
+        print "^C pressed... exiting."
 
     sys.exit(0)
 

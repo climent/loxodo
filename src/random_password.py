@@ -21,8 +21,6 @@ class random_password(object):
             'numbers': '23456789',
             }
 
-        self.password_length = 8
-
         self.rng = Random()
 
     def generate_char_list(self, password_policy=None):
@@ -36,33 +34,33 @@ class random_password(object):
         else:
             final_characters = self._characters.copy()
             for k, v in password_policy.iteritems():
-                if k == "L" and v is False:
+                if k == "L" and v[1] is False:
                     if 'lefthand' in final_characters:
                         final_characters.pop('lefthand')
                     if 'LEFTHAND' in final_characters:
                         final_characters.pop('LEFTHAND')
-                if k == "R" and v is False:
+                if k == "R" and v[1] is False:
                     if 'righthand' in final_characters:
                         final_characters.pop('righthand')
                     if 'RIGHTHAND' in final_characters:
                         final_characters.pop('RIGHTHAND')
-                if k == "U" and v is False:
+                if k == "U" and v[1] is False:
                     if 'LEFTHAND' in final_characters:
                         final_characters.pop('LEFTHAND')
                     if 'RIGHTHAND' in final_characters:
                         final_characters.pop('RIGHTHAND')
-                if k == "l" and v is False:
+                if k == "l" and v[1] is False:
                     if 'righthand' in final_characters:
                         final_characters.pop('righthand')
                     if 'lefthand' in final_characters:
                         final_characters.pop('lefthand')
-                if k == "2" and v is False:
+                if k == "N" and v[1] is False:
                     if 'numbers' in final_characters:
                         final_characters.pop('numbers')
-                if k == "s" and v is False:
+                if k == "s" and v[1] is False:
                     if 'simplesymbols' in final_characters:
                         final_characters.pop('simplesymbols')
-                if k == "S" and v is False:
+                if k == "S" and v[1] is False:
                     if 'symbols' in final_characters:
                         final_characters.pop('symbols')
             for k, v in final_characters.iteritems():
@@ -73,14 +71,14 @@ class random_password(object):
 
         return character_list
 
-    def generate_password(self, password_policy=None):
+    def generate_password(self, password_policy=None, pwlength=10):
         """
         """
         password = ""
 
         all_chars = self.generate_char_list(password_policy)
 
-        for length in range(self.password_length):
-            password = password + self.rng.choice(all_chars)
+        for l in range(pwlength):
+            password += self.rng.choice(all_chars)
 
         return password
