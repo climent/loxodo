@@ -19,7 +19,7 @@ else:
     config.set_basescript(unicode(__file__, sys.getfilesystemencoding()))
 
 # If cmdline arguments were given, use the "cmdline" frontend.
-if len(sys.argv) > 1:
+if set(sys.argv) & {'-i', '-h'}:
     from Loxodo.frontends.cmdline import loxodo
     sys.exit()
 

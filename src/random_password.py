@@ -78,7 +78,7 @@ class random_password(object):
 
         all_chars = self.generate_char_list(password_policy)
 
-        for l in range(pwlength):
+        for _ in range(pwlength):
             password += self.rng.choice(all_chars)
 
         return password
