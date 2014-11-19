@@ -73,18 +73,8 @@ class InteractiveConsole(cmd.Cmd):
         else:
             print "Creating %s ..." % self.vault_file_name
 
-        try:
-            while True:
-                self.vault_password = getpass.getpass("Vault password: ")
-                if self.vault_password == "":
-                    raise EOFError
-                pass2 = getpass.getpass("Re-type the password: ")
-                if self.vault_password == pass2:
-                    self.vault_modified = True
-                    break
-        except EOFError:
-            print "\n\nBye."
-            raise RuntimeError("No password given")
+        self.vault_password = self.get_vault_password(require_confirmation=True)
+        self.vault_modified = True
 
         if os.path.isfile(self.vault_file_name):
             Vault.create(self.vault_password, filename=self.vault_file_name)
@@ -98,27 +88,36 @@ class InteractiveConsole(cmd.Cmd):
             self.vault_status = ""
         self.prompt = "[%s%s]> " % (os.path.basename(self.vault_file_name), self.vault_status)
 
-    def open_vault(self):
-        creating_vault = False
-        vault_action = "Opening"
-        if not os.path.isfile(self.vault_file_name):
-            creating_vault = True
-            vault_action = "Creating"
-        print "%s %s ..." % (vault_action, self.vault_file_name)
+    def get_vault_password(self, require_confirmation=False, allow_empty=False):
         try:
             while True:
-                self.vault_password = getpass.getpass("Vault password: ")
-                if self.vault_password == "":
+                vault_password = getpass.getpass("Vault password: ")
+                if vault_password == "" and not allow_empty:
                     raise EOFError
-                if not creating_vault:
-                    break
-                pass2 = getpass.getpass("Re-type the password: ")
-                if self.vault_password == pass2:
-                    self.vault_modified = True
-                    break
+                if not require_confirmation:
+                    return vault_password
+                vault_password_confirmation = getpass.getpass("Re-type the password: ")
+                if vault_password == vault_password_confirmation:
+                    return vault_password
+                else:
+                    print "Passwords do not match... try again.\n"
         except EOFError:
             print "No password given\n\nBye."
             raise RuntimeError("No password given")
+
+    def open_vault(self):
+        creating_vault = False
+        vault_action = "Opening"
+
+        if not os.path.isfile(self.vault_file_name):
+            creating_vault = True
+            vault_action = "Creating"
+
+        print "%s %s ..." % (vault_action, self.vault_file_name)
+        self.vault_password = self.get_vault_password(require_confirmation=creating_vault)
+        if creating_vault:
+            self.vault_modified = True
+
         try:
             self.vault = Vault(self.vault_password, filename=self.vault_file_name)
         except Vault.BadPasswordError:
@@ -153,8 +152,27 @@ class InteractiveConsole(cmd.Cmd):
             return
 
         print "\nCommands:"
-        print "  ".join(("ls", "show", 'add', 'mod', 'del', "save", 'quit', 'echo', 'sort', 'uuid', 'vi', 'tab', 'verbose', 'export', 'import'))
+        print "  ".join(("ls/search",
+                         "show",
+                         "add",
+                         "mod",
+                         "del",
+                         "save",
+                         "export",
+                         "import",
+                         "quit",
+                         ))
+        print "\nMode switches:"
+        print "  ".join((
+                         "echo",
+                         "uuid",
+                         "sort",
+                         "vi",
+                         "tab",
+                         "verbose",
+                         ))
         print
+        print "Modes:"
         print "echo passwords is %s" % self.echo
         print "uuid mode is %s" % self.uuid
         print "sort criteria is %s" % self.sort_key
@@ -171,7 +189,7 @@ class InteractiveConsole(cmd.Cmd):
 
     def do_quit(self, line):
         """
-        Exits interactive mode.
+        Saves the vault contents and exits interactive mode.
         """
         self.do_save()
         self.clear_vault()
@@ -198,23 +216,26 @@ class InteractiveConsole(cmd.Cmd):
 
     def do_add(self, line=None):
         """
-        Adds an entry to the vault
+        Adds an entry to the vault.
         """
         entry = self.vault.Record.create()
-        while True:
-            entry.title = getpass._raw_input('Entry\'s title: ')
-            if entry.title == "":
-                accept_empty = getpass._raw_input("Entry is empty. Enter Y to accept ")
-                if accept_empty.lower() == 'y':
+        try:
+            while True:
+                entry.title = getpass._raw_input('Entry\'s title: ')
+                if entry.title == "":
+                    accept_empty = getpass._raw_input("Entry is empty. Enter Y to accept ")
+                    if accept_empty.lower() == 'y':
+                        break
+                else:
                     break
-            else:
-                break
-        entry.group = getpass._raw_input('Entry\'s group: ')
-        entry.user = getpass._raw_input('Username: ')
-        entry.notes = getpass._raw_input('Entry\'s notes: ')
-        entry.url = getpass._raw_input('Entry\'s url: ')
-
-        entry.passwd = self.prompt_password()
+            entry.group = getpass._raw_input('Entry\'s group: ')
+            entry.user = getpass._raw_input('Username: ')
+            entry.notes = getpass._raw_input('Entry\'s notes: ')
+            entry.url = getpass._raw_input('Entry\'s url: ')
+            entry.passwd = self.prompt_password()
+        except EOFError:
+            print ""
+            return
 
         self.vault.records.append(entry)
         self.vault_modified = True
@@ -222,12 +243,16 @@ class InteractiveConsole(cmd.Cmd):
         self.set_prompt()
 
     def do_export(self, line=None):
-        print "Exporting file %s ..." % self.vault_file_name
+        """
+        Dumps a comma-separated content of the records.
+        """
+        # TODO(climent): create a file and pass write the contents.
+        print "Exporting vault file %s ..." % self.vault_file_name
         self.vault.export(self.vault_password, self.vault_file_name)
 
     def generate_password(self):
         from src.random_password import random_password as rp
-        #TODO(climent): move the options to the config file
+        # TODO(climent): move the options to the config file
 
         def print_policy(policy):
             for i in policy:
@@ -264,7 +289,10 @@ class InteractiveConsole(cmd.Cmd):
             message = "Type new password. [.] for none, [..] to keep the same, [ENTER] for random."
 
         while True:
-            passwd = getpass.getpass("%s\nPassword: " % message)
+            try:
+                passwd = getpass.getpass("%s\nPassword: " % message)
+            except EOFError:
+                raise
             if not passwd:
                 return self.generate_password()
             if old_password and passwd == "..":
@@ -285,8 +313,9 @@ class InteractiveConsole(cmd.Cmd):
         """
         Delete an entry from the vault.
 
-        If no matches can be found, try using UUIDs.
+        Entries can only be deleted using the UUID.
         """
+        # TODO(climent): implement a way to delete entries using the group/title
         if not self.vault:
             raise RuntimeError("No vault opened")
 
@@ -302,12 +331,12 @@ class InteractiveConsole(cmd.Cmd):
         uuid_regexp = '^[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}$'
         pattern = re.compile(uuid_regexp, re.IGNORECASE)
 
-        if pattern.search(line) is not None:
+        if pattern.search(line):
             uuid = line
 
         match_records, nonmatch_records = self.mod_titles(title=title, uuid=uuid, user=user, group=group)
 
-        if match_records is None:
+        if not match_records:
             print "No matches found."
             return
 
@@ -340,18 +369,19 @@ class InteractiveConsole(cmd.Cmd):
         nomatch_records = None
 
         uuid = None
-        uuid_regexp = '[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}'
-        pattern = re.compile(uuid_regexp, re.IGNORECASE)
-        title = ""
+        title = None
         user = None
         group = None
+
+        uuid_regexp = '[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}'
+        pattern = re.compile(uuid_regexp, re.IGNORECASE)
 
         if pattern.match(line) is not None:
             uuid = line
         else:
-            if len(line.split(".")) == 2 and " " not in line:
+            if len(line.split(".")) >= 2 and " " not in line:
                 group = line.split(".")[0]
-                title = line.split(".")[1]
+                title = line.split(".", 1)[1]
             else:
                 line_elements = line.split(" ")
                 title = line_elements[0]
@@ -363,7 +393,7 @@ class InteractiveConsole(cmd.Cmd):
 
         match_records, nonmatch_records = self.mod_titles(title=title, uuid=uuid, user=user, group=group)
 
-        if match_records is None:
+        if not match_records:
             print "No matches found."
             return
 
@@ -373,7 +403,7 @@ class InteractiveConsole(cmd.Cmd):
                 print "%s [%s] " % (record.title.encode('utf-8', 'replace'), record.user.encode('utf-8', 'replace'))
                 return
 
-        _vault_modified = False
+        vault_modified = False
         record = match_records[0]
         new_record = {}
 
@@ -381,63 +411,88 @@ class InteractiveConsole(cmd.Cmd):
         if self.uuid is True:
             print 'Uuid: [%s]' % str(record.uuid)
         print 'Modifying: [%s.%s]' % (record.group.encode('utf-8', 'replace'), record.title.encode('utf-8', 'replace'))
-        print 'Enter a single dot (.) to clear the field.'
+        print 'Enter a single dot (.) to clear the field, ^D to maintain the current entry.'
         print ''
 
-        new_record['group'] = getpass._raw_input('Group [%s]: ' % record.group)
+        try:
+            new_record['group'] = getpass._raw_input('Group [%s]: ' % record.group)
+        except EOFError:
+            new_record['group'] = ""
+            print ""
 
         if new_record['group'] == ".":
             new_record['group'] = ""
-        if new_record['group'] == "":
+        elif new_record['group'] == "":
             new_record['group'] = record.group
         if new_record['group'] != record.group:
-            _vault_modified = True
+            vault_modified = True
 
-        new_record['title'] = getpass._raw_input('Title [%s]: ' % record.title)
+        try:
+            new_record['title'] = getpass._raw_input('Title [%s]: ' % record.title)
+        except EOFError:
+            new_record['title'] = ""
+            print ""
 
         if new_record['title'] == ".":
             new_record['title'] = ""
-        if new_record['title'] == "":
+        elif new_record['title'] == "":
             new_record['title'] = record.title
         if new_record['title'] != record.title:
-            _vault_modified = True
+            vault_modified = True
 
-        new_record['user'] = getpass._raw_input('User  [%s]: ' % record.user)
+        try:
+            new_record['user'] = getpass._raw_input('User  [%s]: ' % record.user)
+        except EOFError:
+            new_record['user'] = ""
+            print ""
 
         if new_record['user'] == ".":
             new_record['user'] = ""
-        if new_record['user'] == "":
+        elif new_record['user'] == "":
             new_record['user'] = record.user
         if new_record['user'] != record.user:
-            _vault_modified = True
+            vault_modified = True
 
-        new_record['password'] = self.prompt_password(old_password=record.passwd)
+        try:
+            new_record['password'] = self.prompt_password(old_password=record.passwd)
+        except EOFError:
+            new_record['password'] = record.passwd
+            print ""
+
         if new_record['password'] != record.passwd:
-            _vault_modified = True
+            vault_modified = True
 
         if record.notes.encode('utf-8', 'replace') != "":
             print '[NOTES]'
             print '%s' % record.notes
 
-        new_record['notes'] = getpass._raw_input('Entry\'s notes: ')
+        try:
+            new_record['notes'] = getpass._raw_input('Entry\'s notes: ')
+        except EOFError:
+            new_record['notes'] = ""
+            print ""
 
         if new_record['notes'] == ".":
             new_record['notes'] = ""
-        if new_record['notes'] == "":
+        elif new_record['notes'] == "":
             new_record['notes'] = record.notes
         if new_record['notes'] != record.notes:
-            _vault_modified = True
+            vault_modified = True
 
-        new_record['url'] = getpass._raw_input('Entry\'s url [%s]: ' % record.url)
+        try:
+            new_record['url'] = getpass._raw_input('Entry\'s url [%s]: ' % record.url)
+        except EOFError:
+            new_record['url'] = ""
+            print ""
 
         if new_record['url'] == ".":
             new_record['url'] = ""
-        if new_record['url'] == "":
+        elif new_record['url'] == "":
             new_record['url'] = record.url
         if new_record['url'] != record.url:
-            _vault_modified = True
+            vault_modified = True
 
-        if _vault_modified == True:
+        if vault_modified == True:
             record.title = new_record['title']
             record.user = new_record['user']
             record.group = new_record['group']
@@ -452,33 +507,39 @@ class InteractiveConsole(cmd.Cmd):
 
         print ""
 
-    def do_import(self, line):
+    def do_import(self, line=None):
         """
         Adds a CSV importer, based on CSV file
 
         Example: /home/user/data.csv
-        Columns: Title,User,Password,URL,Group
+        Columns: uuid,Group,Title,User,Password,Notes,URL
         """
         if not line:
             cmd.Cmd.do_help(self, "import")
             return
-
+        
         data = csv.reader(open(line, 'rb'))
         try:
             for row in data:
                 entry = self.vault.Record.create()
-                entry.title = row[0]
-                entry.user = row[1]
-                entry.passwd = row[2]
-                entry.url = row[3]
-                entry.group = row[4]
+                entry.group = row[1]
+                entry.title = row[2]
+                entry.user = row[3]
+                entry.passwd = row[4]
+                entry.notes = row[5]
+                entry.url = row[6]
                 self.vault.records.append(entry)
+                if self.verbose:
+                    print "Added entry %s to the database." % row[0]
             self.vault_modified = True
             print "Import completed, but not saved."
-        except csv.Error, e:
-            sys.exit('file %s, line %d: %s' % (line, data.line_num, e))
+        except (AttributeError, IndexError, csv.Error) as e:
+            print 'file %s, line %d: %s' % (line, data.line_num, e)
 
-    def do_ls(self, line):
+    def do_search(self, line=None):
+        self.do_ls(line)
+
+    def do_ls(self, line=None):
         """
         Show contents of this Vault. If an argument is passed a case
         insensitive search of titles is done, entries can also be specified as
@@ -487,15 +548,16 @@ class InteractiveConsole(cmd.Cmd):
         if not self.vault:
             raise RuntimeError("No vault opened")
 
-        line_text = "" 
-        if line is not None:
-            line_text = " for \"%s\"" % line
+        if line:
             vault_records = self.find_titles(line)
         else:
             vault_records = self.vault.records[:]
 
-        if vault_records is None:
-            print "No matches found%s." % line_text
+        if line and not vault_records:
+            print "No matches found for %s." % line
+            return
+        elif not vault_records:
+            print "No records found."
             return
 
         if self.sort_key == 'alpha':
@@ -614,7 +676,7 @@ class InteractiveConsole(cmd.Cmd):
 
         try:
             matches = self.find_titles(line)
-            if matches is None:
+            if not matches:
                 print "No entry found for \"%s\"." % line
                 return
         except:
@@ -687,12 +749,12 @@ class InteractiveConsole(cmd.Cmd):
             pat_title = re.compile("^%s$" % title, re.IGNORECASE)
             for record in self.vault.records:
                 if pat_title.match(record.title) is not None:
-                    if user is not None and user != "":
+                    if user:
                         pat_title = re.compile("^%s$" % user, re.IGNORECASE)
                         if pat_user.match(record.user) is None:
                             nonmatches.append(record)
                             continue
-                    if group is not None and group != "":
+                    if group:
                         pat_group = re.compile("^%s$" % group, re.IGNORECASE)
                         if pat_group.match(record.group) is None:
                             nonmatches.append(record)
@@ -700,12 +762,8 @@ class InteractiveConsole(cmd.Cmd):
                     matches.append(record)
                 else:
                     nonmatches.append(record)
-                    continue
 
-        if len(matches) == 0:
-            return None, nonmatches
-        else:
-            return matches, nonmatches
+        return matches, nonmatches
 
     def find_titles(self, regexp):
         "Finds titles, username, group, or combination of all 3 matching a regular expression. (Case insensitive)"
@@ -716,21 +774,18 @@ class InteractiveConsole(cmd.Cmd):
             print "Invalid regexp: %s" % regexp
             raise
         for record in self.vault.records:
-            if pat.match(record.title) is not None:
+            if pat.match(record.title):
                 matches.append(record)
-            elif pat.match(record.user) is not None:
+            elif pat.match(record.user):
                 matches.append(record)
-            elif pat.match(record.group) is not None:
+            elif pat.match(record.group):
                 matches.append(record)
-            elif pat.match(str(record.uuid)) is not None:
+            elif pat.match(str(record.uuid)):
                 matches.append(record)
-            elif pat.match("%s.%s [%s]" % (record.group, record.title, record.user)) is not None:
+            elif pat.match("%s.%s [%s]" % (record.group, record.title, record.user)):
                 matches.append(record)
 
-        if len(matches) == 0:
-            return None
-        else:
-            return matches
+        return matches
 
 
 def main(argv):
@@ -796,7 +851,7 @@ def main(argv):
     try:
         interactiveConsole.cmdloop()
     except KeyboardInterrupt:
-        print "^C pressed... exiting."
+        print " ... exiting."
 
     sys.exit(0)
 

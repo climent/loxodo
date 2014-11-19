@@ -379,7 +379,7 @@ class Vault(object):
         print "# passwordsafe version 3.0 database"
         print "uuid,group,name,login,passwd,notes,url"
         for record in self.records:
-            print "\"" + str(record.uuid) + "," + record.group + "," + record.title + "," + record.user + "," + record.passwd + "," + record.notes + "," + record.url
+            print str(record.uuid) + "," + record.group + "," + record.title + "," + record.user + "," + record.passwd + "," + record.notes + "," + record.url
 
 
 
