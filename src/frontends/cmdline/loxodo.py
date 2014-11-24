@@ -160,7 +160,7 @@ class InteractiveConsole(cmd.Cmd):
                          "save",
                          "export",
                          "import",
-                         "quit",
+                         "quit", 
                          ))
         print "\nMode switches:"
         print "  ".join((
@@ -199,6 +199,8 @@ class InteractiveConsole(cmd.Cmd):
         """
         Save the vault without exiting.
         """
+        self.check_vault()
+
         if self.vault_modified and self.vault_file_name and self.vault_password:
             self.vault.write_to_file(self.vault_file_name, self.vault_password)
             self.vault_modified = False
@@ -218,6 +220,8 @@ class InteractiveConsole(cmd.Cmd):
         """
         Adds an entry to the vault.
         """
+        self.check_vault()
+
         entry = self.vault.Record.create()
         try:
             while True:
@@ -246,7 +250,7 @@ class InteractiveConsole(cmd.Cmd):
         """
         Dumps a comma-separated content of the records.
         """
-        # TODO(climent): create a file and pass write the contents.
+        # TODO(climent): create a file and write the contents.
         print "Exporting vault file %s ..." % self.vault_file_name
         self.vault.export(self.vault_password, self.vault_file_name)
 
@@ -315,26 +319,9 @@ class InteractiveConsole(cmd.Cmd):
 
         Entries can only be deleted using the UUID.
         """
-        # TODO(climent): implement a way to delete entries using the group/title
-        if not self.vault:
-            raise RuntimeError("No vault opened")
+        self.check_vault()
 
-        vault_records = None
-        match_records = None
-        nomatch_records = None
-
-        uuid = None
-        title = None
-        user = None
-        group = None
-
-        uuid_regexp = '^[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}$'
-        pattern = re.compile(uuid_regexp, re.IGNORECASE)
-
-        if pattern.search(line):
-            uuid = line
-
-        match_records, nonmatch_records = self.mod_titles(title=title, uuid=uuid, user=user, group=group)
+        match_records, nonmatch_records = self.find_matches(line)
 
         if not match_records:
             print "No matches found."
@@ -343,13 +330,19 @@ class InteractiveConsole(cmd.Cmd):
         if len(match_records) > 1:
             print "Too many records matched your search criteria"
             for record in match_records:
-                print "%s [%s] " % (record.title.encode('utf-8', 'replace'), record.user.encode('utf-8', 'replace'))
-                return
+                print "[%s.%s] <%s>" % (record.group.encode('utf-8', 'replace'),
+                                      record.title.encode('utf-8', 'replace'),
+                                      record.user.encode('utf-8', 'replace'))
+            return
 
         if len(match_records) == 1:
             print "Deleting the following record:"
-            self.do_show(str(match_records[0].uuid))
-            confirm_delete = getpass._raw_input("Confirm you want to delete the record [YES]: ")
+            self.do_show(str(match_records[0].uuid), hide_password=True)
+            try:
+                confirm_delete = getpass._raw_input("Confirm you want to delete the record by writing \"yes\": ")
+            except EOFError, KeyboardInterrupt:
+                print "\nDelete cancelled..."
+                return
             if confirm_delete.lower() == 'yes':
                 self.vault.records = nonmatch_records
                 print "Entry Deleted, but vault not yet saved"
@@ -357,51 +350,30 @@ class InteractiveConsole(cmd.Cmd):
 
         print ""
 
+    def check_vault(self):
+        if not self.vault:
+            raise RuntimeError("No vault opened")
+
     def do_mod(self, line=None):
         """
         Modify an entry from the vault.
         """
-        if not self.vault:
-            raise RuntimeError("No vault opened")
+        self.check_vault()
 
-        vault_records = None
-        match_records = None
-        nomatch_records = None
-
-        uuid = None
-        title = None
-        user = None
-        group = None
-
-        uuid_regexp = '[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}'
-        pattern = re.compile(uuid_regexp, re.IGNORECASE)
-
-        if pattern.match(line) is not None:
-            uuid = line
-        else:
-            if len(line.split(".")) >= 2 and " " not in line:
-                group = line.split(".")[0]
-                title = line.split(".", 1)[1]
-            else:
-                line_elements = line.split(" ")
-                title = line_elements[0]
-
-                if len(line_elements) == 2:
-                    group = line_elements[1]
-                if len(line_elements) == 3:
-                    user = line_elements[2]
-
-        match_records, nonmatch_records = self.mod_titles(title=title, uuid=uuid, user=user, group=group)
+        match_records, nonmatch_records = self.find_matches(line)
 
         if not match_records:
             print "No matches found."
             return
 
         if len(match_records) > 1:
-            print "Too many records matched your search criteria"
-            for record in match_records:
-                print "%s [%s] " % (record.title.encode('utf-8', 'replace'), record.user.encode('utf-8', 'replace'))
-                return
+            print "Too many records matched your search criteria."
+            if line:
+                for record in match_records:
+                    print "[%s.%s] [%s]" % (record.group.encode('utf-8', 'replace'),
+                                          record.title.encode('utf-8', 'replace'),
+                                          record.user.encode('utf-8', 'replace'))
+            return
 
         vault_modified = False
         record = match_records[0]
@@ -514,6 +486,8 @@ class InteractiveConsole(cmd.Cmd):
         Example: /home/user/data.csv
         Columns: uuid,Group,Title,User,Password,Notes,URL
         """
+        self.check_vault()
+
         if not line:
             cmd.Cmd.do_help(self, "import")
             return
@@ -545,32 +519,27 @@ class InteractiveConsole(cmd.Cmd):
         insensitive search of titles is done, entries can also be specified as
         regular expressions.
         """
-        if not self.vault:
-            raise RuntimeError("No vault opened")
+        self.check_vault()
 
         if line:
             vault_records = self.find_titles(line)
+            if not vault_records:
+                print "No matches found for \"%s\"." % line
+                return
         else:
             vault_records = self.vault.records[:]
+            if not vault_records:
+                print "No records found."
+                return
 
-        if line and not vault_records:
-            print "No matches found for %s." % line
-            return
-        elif not vault_records:
-            print "No records found."
-            return
-
-        if self.sort_key == 'alpha':
-            vault_records.sort(lambda e1, e2: cmp(".".join([e1.group, e1.title]), ".".join([e2.group, e2.title])))
-        elif self.sort_key == 'mod':
-            vault_records.sort(lambda e1, e2: cmp(e1.last_mod, e2.last_mod))
+        vault_records, _ = self.sort_matches(vault_records)
 
         print ""
         print "[group.title] username"
         if self.verbose:
-            print "URL: url"
-            print "Notes: notes"
-            print "Last mod: modification time"
+            print "    URL: url"
+            print "    Notes: notes"
+            print "    Last mod: modification time"
         print "-"*10
         for record in vault_records:
             print "[%s.%s] %s" % (record.group.encode('utf-8', 'replace'),
@@ -585,6 +554,17 @@ class InteractiveConsole(cmd.Cmd):
                     print "    Last mod: %s" % time.strftime('%Y/%m/%d',time.gmtime(record.last_mod))
 
         print ""
+
+    def sort_matches(self, matches, nonmatches=None):
+        if not nonmatches:
+            nonmatches = []
+        if self.sort_key == 'alpha':
+            matches.sort(lambda e1, e2: cmp(".".join([e1.group, e1.title]), ".".join([e2.group, e2.title])))
+            nonmatches.sort(lambda e1, e2: cmp(".".join([e1.group, e1.title]), ".".join([e2.group, e2.title])))
+        elif self.sort_key == 'mod':
+            matches.sort(lambda e1, e2: cmp(e1.last_mod, e2.last_mod))
+            nonmatches.sort(lambda e1, e2: cmp(e1.last_mod, e2.last_mod))
+        return matches, nonmatches
 
     def do_output(self, line=None):
         """
@@ -612,10 +592,7 @@ class InteractiveConsole(cmd.Cmd):
 
         If True, shows the UUID of the vault entries when showing the output.
         """
-        if self.uuid == False:
-            self.uuid = True
-        else:
-            self.uuid = False
+        self.uuid = not self.uuid
         print "uuid is %s" % self.uuid
 
     def do_echo(self, line=None):
@@ -624,10 +601,7 @@ class InteractiveConsole(cmd.Cmd):
 
         If False, hide the password field when showing the output.
         """
-        if self.echo == False:
-            self.echo = True
-        else:
-            self.echo = False
+        self.echo = not self.echo
         print "echo is %s" % self.echo
 
     def do_vi(self, line=None):
@@ -635,12 +609,10 @@ class InteractiveConsole(cmd.Cmd):
         Set vi editing mode for commandline
         """
         if self.vi == False:
-            self.vi = True
             readline.parse_and_bind('set editing-mode vi')
         else:
-            self.vi = False
             readline.parse_and_bind('set editing-mode emacs')
-
+        self.vi = not self.vi
         print "Vi Editing mode is %s" % self.vi
 
     def do_verbose(self, line=None):
@@ -648,7 +620,6 @@ class InteractiveConsole(cmd.Cmd):
         Enable verbose listing of vault entries
         """
         self.verbose = not self.verbose
-
         print "Verbose listing mode is %s" % self.verbose
 
     def do_tab(self, line=None):
@@ -656,23 +627,21 @@ class InteractiveConsole(cmd.Cmd):
         Enable Tab completion for cmd interface
         """
         if self.tabcomp == False:
-            self.tabcomp = True
             readline.parse_and_bind('tab: complete')
         else:
-            self.tabcomp = False
             readline.parse_and_bind('tab: noncomplete')
+        self.tabcomp = not self.tabcomp
 
         print "TAB completion mode is %s" % self.tabcomp
 
-    def do_show(self, line, echo=True, passwd=False, uuid=False):
+    def do_show(self, line, do_echo=False, hide_password=False):
         """
         Show the specified entry (including its password).
 
         A case insenstive search of titles is done, entries can also be
         specified as regular expressions.
         """
-        if not self.vault:
-            raise RuntimeError("No vault opened")
+        self.check_vault()
 
         try:
             matches = self.find_titles(line)
@@ -682,27 +651,18 @@ class InteractiveConsole(cmd.Cmd):
         except:
             return
 
-        if self.echo is not None:
-            do_echo = self.echo
-        else:
-            do_echo = echo
-
-        if self.uuid is not None:
-            do_uuid = self.uuid
-        else:
-            do_uuid = uuid
-
         print ""
         for record in matches:
-            if do_uuid == True:
+            if self.uuid:
                 print "[%s]" % record.uuid
             print ("[%s.%s]\nUsername : %s""" % 
                 (record.group.encode('utf-8', 'replace'),
                  record.title.encode('utf-8', 'replace'),
                  record.user.encode('utf-8', 'replace')))
 
-            if do_echo is True:
-                print "Password : %s" % record.passwd.encode('utf-8', 'replace')
+            if self.echo or do_echo:
+                if not hide_password:
+                    print "Password : %s" % record.passwd.encode('utf-8', 'replace')
 
             if record.notes.strip():
                 print "Notes    : %s" % record.notes.encode('utf-8', 'replace')
@@ -735,39 +695,95 @@ class InteractiveConsole(cmd.Cmd):
         completions.sort(lambda e1, e2: cmp(e1.title, e2.title))
         return completions
 
-    def mod_titles(self, title=None, uuid=None, user=None, group=None):
-        """Finds titles, user, group, uuid, or a combination as an exact expression. (Case insensitive)"""
+
+    def find_matches(self, line=None):
+        """Finds matching records.
+        
+        This methos finds matching records by uuid, or any combination of
+        group, title and user, case insensitive.
+        
+        The search for matches starts very narrow and widens:
+        1. use uuid
+        2. combine group.title.username and check for a match
+        3. combine group.title
+        4. combine title.username
+        5. check in any of the fields
+        """ 
+        self.check_vault()
+
         matches = []
         nonmatches = []
-        if uuid is not None:
+
+        uuid = None
+        title = None
+        user = None
+        group = None
+
+        uuid_regexp = '[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}'
+        pattern = re.compile(uuid_regexp, re.IGNORECASE)
+
+        if pattern.match(line):
+            # be agressive with the UUID matching
             for record in self.vault.records:
                 if str(record.uuid) == uuid:
                     matches.append(record)
                 else:
                     nonmatches.append(record)
-        else:
-            pat_title = re.compile("^%s$" % title, re.IGNORECASE)
+            return self.sort_matches(matches, nonmatches)
+
+        pattern = re.compile(line, re.IGNORECASE)
+
+        for sep in ".", " ":
             for record in self.vault.records:
-                if pat_title.match(record.title) is not None:
-                    if user:
-                        pat_title = re.compile("^%s$" % user, re.IGNORECASE)
-                        if pat_user.match(record.user) is None:
-                            nonmatches.append(record)
-                            continue
-                    if group:
-                        pat_group = re.compile("^%s$" % group, re.IGNORECASE)
-                        if pat_group.match(record.group) is None:
-                            nonmatches.append(record)
-                            continue
+                if pattern.match('%s%s%s%s%s' % (record.group, sep, record.title, sep, record.user)):
                     matches.append(record)
                 else:
                     nonmatches.append(record)
+            if matches:
+                return self.sort_matches(matches, nonmatches)
+
+            for record in self.vault.records:
+                if pattern.match('%s%s%s' % (record.group, sep, record.title)):
+                    matches.append(record)
+                else:
+                    nonmatches.append(record)
+            if matches:
+                return self.sort_matches(matches, nonmatches)
+
+            for record in self.vault.records:
+                if pattern.match('%s%s%s' % (record.title, sep, record.user)):
+                    matches.append(record)
+                else:
+                    nonmatches.append(record)
+            if matches:
+                return self.sort_matches(matches, nonmatches)
+
+        for sep in ".", " ":
+            for record in self.vault.records:
+                if pattern.match('%s%s%s%s%s' % (record.title, sep, record.group, sep, record.user)):
+                    matches.append(record)
+                else:
+                    nonmatches.append(record)
+            if matches:
+                return self.sort_matches(matches, nonmatches)
+
+            for record in self.vault.records:
+                if pattern.match('%s%s%s' % (record.title, sep, record.group)):
+                    matches.append(record)
+                else:
+                    nonmatches.append(record)
+            if matches:
+                return self.sort_matches(matches, nonmatches)
+        
+        matches = self.find_titles(line)
+        nonmatches = list(set(self.vault.records) - set(matches))
 
         return matches, nonmatches
 
     def find_titles(self, regexp):
         "Finds titles, username, group, or combination of all 3 matching a regular expression. (Case insensitive)"
         matches = []
+        nonmatches = []
         try:
             pat = re.compile(regexp, re.IGNORECASE)
         except:
@@ -784,6 +800,10 @@ class InteractiveConsole(cmd.Cmd):
                 matches.append(record)
             elif pat.match("%s.%s [%s]" % (record.group, record.title, record.user)):
                 matches.append(record)
+            else:
+                nonmatches.append(record)
+
+        matches, _ = self.sort_matches(matches)
 
         return matches
 
@@ -839,7 +859,9 @@ def main(argv):
             interactiveConsole.do_ls("")
             sys.exit(0)
         elif options.do_show:
-            interactiveConsole.do_show(options.do_show, options.echo, options.passwd)
+            interactiveConsole.uuid = options.uuid
+            interactiveConsole.echo = options.echo
+            interactiveConsole.do_show(options.do_show)
             sys.exit(0)
         elif options.export:
             interactiveConsole.do_export()
