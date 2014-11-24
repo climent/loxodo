@@ -160,7 +160,7 @@ class InteractiveConsole(cmd.Cmd):
                          "save",
                          "export",
                          "import",
-                         "quit", 
+                         "quit",
                          ))
         print "\nMode switches:"
         print "  ".join((
@@ -491,7 +491,7 @@ class InteractiveConsole(cmd.Cmd):
         if not line:
             cmd.Cmd.do_help(self, "import")
             return
-        
+
         data = csv.reader(open(line, 'rb'))
         try:
             for row in data:
@@ -655,7 +655,7 @@ class InteractiveConsole(cmd.Cmd):
         for record in matches:
             if self.uuid:
                 print "[%s]" % record.uuid
-            print ("[%s.%s]\nUsername : %s""" % 
+            print ("[%s.%s]\nUsername : %s""" %
                 (record.group.encode('utf-8', 'replace'),
                  record.title.encode('utf-8', 'replace'),
                  record.user.encode('utf-8', 'replace')))
@@ -698,17 +698,17 @@ class InteractiveConsole(cmd.Cmd):
 
     def find_matches(self, line=None):
         """Finds matching records.
-        
+
         This methos finds matching records by uuid, or any combination of
         group, title and user, case insensitive.
-        
+
         The search for matches starts very narrow and widens:
         1. use uuid
         2. combine group.title.username and check for a match
         3. combine group.title
         4. combine title.username
         5. check in any of the fields
-        """ 
+        """
         self.check_vault()
 
         matches = []
@@ -774,7 +774,7 @@ class InteractiveConsole(cmd.Cmd):
                     nonmatches.append(record)
             if matches:
                 return self.sort_matches(matches, nonmatches)
-        
+
         matches = self.find_titles(line)
         nonmatches = list(set(self.vault.records) - set(matches))
 
