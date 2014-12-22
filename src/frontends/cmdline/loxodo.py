@@ -124,7 +124,7 @@ class InteractiveConsole(cmd.Cmd):
             print "Bad password."
             raise
         except Vault.VaultVersionError:
-            print "This is not a PasswordSafe V3 Vault."
+            print "This is not a PasswordSafe V3 vault."
             raise
         except Vault.VaultFormatError:
             print "Vault integrity check failed."
@@ -321,7 +321,10 @@ class InteractiveConsole(cmd.Cmd):
         """
         self.check_vault()
 
-        match_records, nonmatch_records = self.find_matches(line)
+        try:
+            match_records, nonmatch_records = self.find_matches(line)
+        except:
+            return
 
         if not match_records:
             print "No matches found."
@@ -360,7 +363,10 @@ class InteractiveConsole(cmd.Cmd):
         """
         self.check_vault()
 
-        match_records, nonmatch_records = self.find_matches(line)
+        try:
+            match_records, nonmatch_records = self.find_matches(line)
+        except:
+            return
 
         if not match_records:
             print "No matches found."
@@ -515,14 +521,18 @@ class InteractiveConsole(cmd.Cmd):
 
     def do_ls(self, line=None):
         """
-        Show contents of this Vault. If an argument is passed a case
-        insensitive search of titles is done, entries can also be specified as
-        regular expressions.
+        Show contents of this vault.
+        
+        If an argument is passed it is treated as a regular expression and a
+        case insensitive search of the fields is done.
         """
         self.check_vault()
 
         if line:
-            vault_records = self.find_titles(line)
+            try:
+                vault_records = self.find_titles(line)
+            except:
+                return
             if not vault_records:
                 print "No matches found for \"%s\"." % line
                 return
@@ -556,14 +566,16 @@ class InteractiveConsole(cmd.Cmd):
         print ""
 
     def sort_matches(self, matches, nonmatches=None):
+        lambda_alpha = lambda e1, e2: cmp(".".join([e1.group, e1.title]), ".".join([e2.group, e2.title]))
+        lambda_mod = lambda e1, e2: cmp(e1.last_mod, e2.last_mod)
         if not nonmatches:
             nonmatches = []
         if self.sort_key == 'alpha':
-            matches.sort(lambda e1, e2: cmp(".".join([e1.group, e1.title]), ".".join([e2.group, e2.title])))
-            nonmatches.sort(lambda e1, e2: cmp(".".join([e1.group, e1.title]), ".".join([e2.group, e2.title])))
+            matches.sort(lambda_alpha)
+            nonmatches.sort(lambda_alpha)
         elif self.sort_key == 'mod':
-            matches.sort(lambda e1, e2: cmp(e1.last_mod, e2.last_mod))
-            nonmatches.sort(lambda e1, e2: cmp(e1.last_mod, e2.last_mod))
+            matches.sort(lambda_mod)
+            nonmatches.sort(lambda_mod)
         return matches, nonmatches
 
     def do_output(self, line=None):
@@ -671,7 +683,7 @@ class InteractiveConsole(cmd.Cmd):
                 print "URL      : %s" % record.url.encode('utf-8', 'replace')
 
             if record.last_mod != 0:
-                print "Last mod : %s" % time.strftime('%Y/%m/%d',time.gmtime(record.last_mod))
+                print "Last mod : %s" % time.strftime('%Y/%m/%d', time.gmtime(record.last_mod))
 
             print ""
 
@@ -688,9 +700,12 @@ class InteractiveConsole(cmd.Cmd):
             fulltext = line[5:]
             lastspace = fulltext.rfind(' ')
             if lastspace == -1:
-                completions = [record.title for record in self.vault.records if record.title.upper().startswith(text.upper())]
+                completions = [record.title for record in self.vault.records if
+                    record.title.upper().startswith(text.upper())]
             else:
-                completions = [record.title[lastspace+1:] for record in self.vault.records if record.title.upper().startswith(fulltext.upper())]
+                completions = [record.title[lastspace+1:] for record in
+                    self.vault.records if
+                    record.title.upper().startswith(fulltext.upper())]
 
         completions.sort(lambda e1, e2: cmp(e1.title, e2.title))
         return completions
@@ -719,10 +734,12 @@ class InteractiveConsole(cmd.Cmd):
         user = None
         group = None
 
-        uuid_regexp = '[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}'
+        uuid_regexp = '^[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}$'
         pattern = re.compile(uuid_regexp, re.IGNORECASE)
 
         if pattern.match(line):
+            matches = []
+            nonmatches = []
             # be agressive with the UUID matching
             for record in self.vault.records:
                 if str(record.uuid) == uuid:
@@ -731,10 +748,16 @@ class InteractiveConsole(cmd.Cmd):
                     nonmatches.append(record)
             return self.sort_matches(matches, nonmatches)
 
-        pattern = re.compile(line, re.IGNORECASE)
+        try:
+            pattern = re.compile(line, re.IGNORECASE)
+        except:
+            print "Invalid regexp: %s" % line
+            raise
 
         for sep in ".", " ":
             for record in self.vault.records:
+                matches = []
+                nonmatches = []
                 if pattern.match('%s%s%s%s%s' % (record.group, sep, record.title, sep, record.user)):
                     matches.append(record)
                 else:
@@ -743,6 +766,8 @@ class InteractiveConsole(cmd.Cmd):
                 return self.sort_matches(matches, nonmatches)
 
             for record in self.vault.records:
+                matches = []
+                nonmatches = []
                 if pattern.match('%s%s%s' % (record.group, sep, record.title)):
                     matches.append(record)
                 else:
@@ -751,6 +776,8 @@ class InteractiveConsole(cmd.Cmd):
                 return self.sort_matches(matches, nonmatches)
 
             for record in self.vault.records:
+                matches = []
+                nonmatches = []
                 if pattern.match('%s%s%s' % (record.title, sep, record.user)):
                     matches.append(record)
                 else:
@@ -760,6 +787,8 @@ class InteractiveConsole(cmd.Cmd):
 
         for sep in ".", " ":
             for record in self.vault.records:
+                matches = []
+                nonmatches = []
                 if pattern.match('%s%s%s%s%s' % (record.title, sep, record.group, sep, record.user)):
                     matches.append(record)
                 else:
@@ -768,6 +797,8 @@ class InteractiveConsole(cmd.Cmd):
                 return self.sort_matches(matches, nonmatches)
 
             for record in self.vault.records:
+                matches = []
+                nonmatches = []
                 if pattern.match('%s%s%s' % (record.title, sep, record.group)):
                     matches.append(record)
                 else:
@@ -781,7 +812,8 @@ class InteractiveConsole(cmd.Cmd):
         return matches, nonmatches
 
     def find_titles(self, regexp):
-        "Finds titles, username, group, or combination of all 3 matching a regular expression. (Case insensitive)"
+        """Finds titles, username, group, or combination of all 3 matching a
+        regular expression. (Case insensitive)"""
         matches = []
         nonmatches = []
         try:
@@ -810,17 +842,27 @@ class InteractiveConsole(cmd.Cmd):
 
 def main(argv):
     # Options
-    usage = "usage: %prog [options] [Vault.psafe3]"
+    usage = "usage: %prog [options] [vault.psafe3]"
     parser = OptionParser(usage=usage)
-    parser.add_option("-l", "--ls", dest="do_ls", default=False, action="store_true", help="list contents of vault")
-    parser.add_option("-s", "--show", dest="do_show", default=None, action="store", type="string", help="Show entries matching REGEX", metavar="REGEX")
-    parser.add_option("-i", "--interactive", dest="interactive", default=False, action="store_true", help="Use command line interface")
-    parser.add_option("-n", "--new", dest="create_new_vault", default=False, action="store_true", help="Create and initialize new Vault.")
-    parser.add_option("-c", "--console_only", dest="console", default=False, action="store_true", help="Disable interaction with clipboard")
-    parser.add_option("-p", "--password", dest="passwd", default=False, action="store_true", help="Auto adds password to clipboard. (GTK Only)")
-    parser.add_option("-e", "--echo", dest="echo", default=False, action="store_true", help="Passwords are displayed on the screen")
-    parser.add_option("-u", "--uuid", dest="uuid", default=False, action="store_true", help="Show uuid while processing passwords")
-    parser.add_option("-x", "--export", dest="export", default=False, action="store_true", help="Export database to csv")
+    parser.add_option("-l", "--ls", dest="do_ls", default=False,
+        action="store_true", help="list contents of vault")
+    parser.add_option("-s", "--show", dest="do_show", default=None,
+        action="store", type="string", help="Show entries matching REGEX",
+        metavar="REGEX")
+    parser.add_option("-i", "--interactive", dest="interactive", default=False,
+        action="store_true", help="Use command line interface")
+    parser.add_option("-n", "--new", dest="create_new_vault", default=False,
+        action="store_true", help="Create and initialize new vault.")
+    parser.add_option("-c", "--console_only", dest="console", default=False,
+        action="store_true", help="Disable interaction with clipboard")
+    parser.add_option("-p", "--password", dest="passwd", default=False,
+        action="store_true", help="Auto adds password to clipboard. (GTK Only)")
+    parser.add_option("-e", "--echo", dest="echo", default=False,
+        action="store_true", help="Passwords are displayed on the screen")
+    parser.add_option("-u", "--uuid", dest="uuid", default=False,
+        action="store_true", help="Show uuid while processing passwords")
+    parser.add_option("-x", "--export", dest="export", default=False,
+        action="store_true", help="Export database to csv")
 
 
     (options, args) = parser.parse_args()
@@ -830,12 +872,12 @@ def main(argv):
     if (len(args) < 1):
         if (config.recentvaults):
             interactiveConsole.vault_file_name = config.recentvaults[0]
-            print "No Vault specified, using %s" % interactiveConsole.vault_file_name
+            print "No vault specified, using %s" % interactiveConsole.vault_file_name
         else:
-            print "No Vault specified, and none found in config."
+            print "No vault specified, and none found in config."
             sys.exit(2)
     elif (len(args) > 1):
-        print "More than one Vault specified"
+        print "More than one vault specified"
         sys.exit(2)
     else:
         interactiveConsole.vault_file_name = args[0]
