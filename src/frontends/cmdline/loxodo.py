@@ -755,9 +755,9 @@ class InteractiveConsole(cmd.Cmd):
             raise
 
         for sep in ".", " ":
+            matches = []
+            nonmatches = []
             for record in self.vault.records:
-                matches = []
-                nonmatches = []
                 if pattern.match('%s%s%s%s%s' % (record.group, sep, record.title, sep, record.user)):
                     matches.append(record)
                 else:
@@ -765,9 +765,9 @@ class InteractiveConsole(cmd.Cmd):
             if matches:
                 return self.sort_matches(matches, nonmatches)
 
+            matches = []
+            nonmatches = []
             for record in self.vault.records:
-                matches = []
-                nonmatches = []
                 if pattern.match('%s%s%s' % (record.group, sep, record.title)):
                     matches.append(record)
                 else:
@@ -775,9 +775,9 @@ class InteractiveConsole(cmd.Cmd):
             if matches:
                 return self.sort_matches(matches, nonmatches)
 
+            matches = []
+            nonmatches = []
             for record in self.vault.records:
-                matches = []
-                nonmatches = []
                 if pattern.match('%s%s%s' % (record.title, sep, record.user)):
                     matches.append(record)
                 else:
@@ -786,9 +786,9 @@ class InteractiveConsole(cmd.Cmd):
                 return self.sort_matches(matches, nonmatches)
 
         for sep in ".", " ":
+            matches = []
+            nonmatches = []
             for record in self.vault.records:
-                matches = []
-                nonmatches = []
                 if pattern.match('%s%s%s%s%s' % (record.title, sep, record.group, sep, record.user)):
                     matches.append(record)
                 else:
@@ -796,9 +796,9 @@ class InteractiveConsole(cmd.Cmd):
             if matches:
                 return self.sort_matches(matches, nonmatches)
 
+            matches = []
+            nonmatches = []
             for record in self.vault.records:
-                matches = []
-                nonmatches = []
                 if pattern.match('%s%s%s' % (record.title, sep, record.group)):
                     matches.append(record)
                 else:
