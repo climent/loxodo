@@ -397,6 +397,9 @@ class InteractiveConsole(cmd.Cmd):
         except EOFError:
             new_record['group'] = ""
             print ""
+        except KeyboardInterrupt:
+            print " pressed. Aborting modifications."
+            return
 
         if new_record['group'] == ".":
             new_record['group'] = ""
@@ -410,6 +413,9 @@ class InteractiveConsole(cmd.Cmd):
         except EOFError:
             new_record['title'] = ""
             print ""
+        except KeyboardInterrupt:
+            print " pressed. Aborting modifications."
+            return
 
         if new_record['title'] == ".":
             new_record['title'] = ""
@@ -423,6 +429,9 @@ class InteractiveConsole(cmd.Cmd):
         except EOFError:
             new_record['user'] = ""
             print ""
+        except KeyboardInterrupt:
+            print " pressed. Aborting modifications."
+            return
 
         if new_record['user'] == ".":
             new_record['user'] = ""
@@ -436,6 +445,9 @@ class InteractiveConsole(cmd.Cmd):
         except EOFError:
             new_record['password'] = record.passwd
             print ""
+        except KeyboardInterrupt:
+            print " pressed. Aborting modifications."
+            return
 
         if new_record['password'] != record.passwd:
             vault_modified = True
@@ -449,6 +461,9 @@ class InteractiveConsole(cmd.Cmd):
         except EOFError:
             new_record['notes'] = ""
             print ""
+        except KeyboardInterrupt:
+            print " pressed. Aborting modifications."
+            return
 
         if new_record['notes'] == ".":
             new_record['notes'] = ""
@@ -462,6 +477,9 @@ class InteractiveConsole(cmd.Cmd):
         except EOFError:
             new_record['url'] = ""
             print ""
+        except KeyboardInterrupt:
+            print " pressed. Aborting modifications."
+            return
 
         if new_record['url'] == ".":
             new_record['url'] = ""
