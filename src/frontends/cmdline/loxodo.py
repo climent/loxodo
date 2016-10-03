@@ -760,7 +760,7 @@ class InteractiveConsole(cmd.Cmd):
             nonmatches = []
             # be agressive with the UUID matching
             for record in self.vault.records:
-                if str(record.uuid) == uuid:
+                if str(record.uuid) == line:
                     matches.append(record)
                 else:
                     nonmatches.append(record)
