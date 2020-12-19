@@ -112,10 +112,10 @@ class InteractiveConsole(cmd.Cmd):
                 if vault_password == "" and not allow_empty:
                     raise EOFError
                 if not require_confirmation:
-                    return vault_password
+                    return vault_password.encode('utf-8', 'replace')
                 vault_password_confirmation = getpass.getpass("Re-type the password: ")
                 if vault_password == vault_password_confirmation:
-                    return vault_password
+                    return vault_password.encode('utf-8', 'replace')
                 else:
                     print("Passwords do not match... try again.\n")
         except EOFError:
@@ -190,7 +190,7 @@ class InteractiveConsole(cmd.Cmd):
                          "vi",
                          "tab",
                          "verbose",
-                         )))
+                         ))))
         print("")
         print("Modes:")
         print("echo passwords is %s" % self.echo())
@@ -290,7 +290,7 @@ class InteractiveConsole(cmd.Cmd):
         Dumps a comma-separated content of the records.
         """
         # TODO(climent): create a file and write the contents.
-        print"Exporting vault file %s ..." % self.vault_file_name)
+        print("Exporting vault file %s ..." % self.vault_file_name)
         self.vault.export(self.vault_password, self.vault_file_name)
 
     def generate_password(self):
@@ -571,7 +571,7 @@ class InteractiveConsole(cmd.Cmd):
                 if self.verbose:
                     print("Added entry %s to the database." % row[0])
             self.vault_modified = True
-           print("Import completed, but not saved.")
+            print("Import completed, but not saved.")
         except (AttributeError, IndexError, csv.Error) as e:
             print("file %s, line %d: %s" % (line, data.line_num, e))
 
@@ -732,10 +732,10 @@ class InteractiveConsole(cmd.Cmd):
         for record in matches:
             if self.uuid:
                 print("[%s]" % record.uuid)
-            print(("[%s.%s]\nUsername : %s""" %)
+            print(("[%s.%s]\nUsername : %s""" %
                 (record.group.encode('utf-8', 'replace'),
                  record.title.encode('utf-8', 'replace'),
-                 record.user.encode('utf-8', 'replace')))
+                 record.user.encode('utf-8', 'replace'))))
 
             if self.echo or do_echo:
                 if not hide_password:
