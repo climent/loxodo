@@ -19,7 +19,7 @@ if sys.platform == 'darwin':
         app = ['loxodo.py'],
         options = dict(
             py2app = dict(
-                argv_emulation = True,
+                argv_emulation = False,
                 iconfile = 'resources/loxodo-icon.icns',
                 packages = ['src', 'wx'],
                 site_packages = True,
@@ -51,17 +51,30 @@ elif sys.platform == 'win32':
         data_files = dataFiles,
         options = dict(
             py2exe = dict(
-                excludes = 'ppygui'
             )
         )
     )
     setup(**extra_options)
 else:
     extra_options = dict(
-        name="Loxodo",
-        app = ['loxodo.py'],
-        scripts = ['loxodo.py']
+        name = 'Loxodo',
+        author = 'Christoph Sommer',
+        author_email = 'mail@christoph-sommer.de',
+        url = 'http://www.christoph-sommer.de/loxodo/',
+        description = 'A Password Safe V3 compatible password vault',
+        download_url = 'http://github.com/sommer/loxodo/zipball/master',
+        license = 'GPL-2.0+',
+        scripts = [ 'loxodo.py' ],
+        packages = ['src',
+                    'src.frontends',
+                    'src.frontends.cmdline',
+                    'src.frontends.wx',
+                    'src.twofish'],
+        package_data = {
+            'src.frontends.wx': [
+                '../../../resources/*',
+                '../../../locale/de/LC_MESSAGES/*'
+            ],
+        },
     )
     setup(**extra_options)
-
-
