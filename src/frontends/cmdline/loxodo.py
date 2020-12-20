@@ -61,7 +61,7 @@ class InteractiveConsole(cmd.Cmd):
         self.prompt = "[none]> "
 
     def _getpass(self, prompt):
-        p = getpass(prompt)
+        p = getpass.getpass(prompt)
         # Needed for Python 2
         if isinstance(p, bytes):
             p = p.decode(sys.stdin.encoding)
@@ -80,7 +80,7 @@ class InteractiveConsole(cmd.Cmd):
         if os.path.isfile(self.vault_file_name):
             print("Overwriting %s ..." % self.vault_file_name)
             try:
-                answer = getpass.getpass("Continue? [y/N] >")
+                answer = getpass._raw_input("Continue? [y/N] > ")
                 if answer.lower() != "y":
                     print(" exit requested... exiting.")
                     sys.exit(0)
@@ -91,10 +91,13 @@ class InteractiveConsole(cmd.Cmd):
             print("Creating %s ..." % self.vault_file_name)
 
         self.vault_password = self.get_vault_password(require_confirmation=True)
-        self.vault_modified = True
+        #self.vault_modified = True
 
+        # If the file exists, this will create a new empty vault, which we then
+        # open with the constructor
         if os.path.isfile(self.vault_file_name):
             Vault.create(self.vault_password, filename=self.vault_file_name)
+
         self.vault = Vault(self.vault_password, filename=self.vault_file_name)
         print("... Done.\n")
 
@@ -108,14 +111,14 @@ class InteractiveConsole(cmd.Cmd):
     def get_vault_password(self, require_confirmation=False, allow_empty=False):
         try:
             while True:
-                vault_password = getpass.getpass("Vault password: ")
+                vault_password = self._getpass("Vault password: ")
                 if vault_password == "" and not allow_empty:
                     raise EOFError
                 if not require_confirmation:
-                    return vault_password.encode('utf-8', 'replace')
-                vault_password_confirmation = getpass.getpass("Re-type the password: ")
+                    return vault_password
+                vault_password_confirmation = self._getpass("Re-type the password: ")
                 if vault_password == vault_password_confirmation:
-                    return vault_password.encode('utf-8', 'replace')
+                    return vault_password
                 else:
                     print("Passwords do not match... try again.\n")
         except EOFError:
@@ -193,12 +196,12 @@ class InteractiveConsole(cmd.Cmd):
                          ))))
         print("")
         print("Modes:")
-        print("echo passwords is %s" % self.echo())
-        print("uuid mode is %s" % self.uuid())
-        print("sort criteria is %s" % self.sort_key())
-        print("vi editing mode is %s" % self.vi())
-        print("tab completion is %s" % self.tabcomp())
-        print("vervose mode is %s" % self.verbose())
+        print("echo passwords is %s" % self.echo)
+        print("uuid mode is %s" % self.uuid)
+        print("sort criteria is %s" % self.sort_key)
+        print("vi editing mode is %s" % self.vi)
+        print("tab completion is %s" % self.tabcomp)
+        print("vervose mode is %s" % self.verbose)
         print("")
 
     # This method should clear all data in self.vault.records because we
@@ -237,9 +240,9 @@ class InteractiveConsole(cmd.Cmd):
         line = self._encode_line(line)
 
         if self.vault_modified:
-            print(" pressed... changes were not saved!")
+            print(" ^D pressed... changes were not saved!")
         else:
-            print(" pressed... exiting.")
+            print(" ^D pressed... exiting.")
 
         return True
 
@@ -249,30 +252,31 @@ class InteractiveConsole(cmd.Cmd):
         """
 
         line = self._encode_line(line)
-        # entry.user = line[0]
-        # if len(line) >= 2:
-        #     entry.title = line[1]
-        # if len(line) >= 3:
-        #     entry.group = line[2]
 
-        if not line:
-            cmd.Cmd.do_help(self, "add")
-            return
- 
         self.check_vault()
         entry = self.vault.Record.create()
 
+        # if len(line) > 0:
+        #     entry.user = line[0]
+        #     if len(line) > 1:
+        #         entry.title = line[1]
+        #     if len(line) > 2:
+        #         entry.group = line[2]
+
         try:
-            while True:
-                entry.title = getpass._raw_input('Entry\'s title: ')
-                if entry.title == "":
-                    accept_empty = getpass._raw_input("Entry is empty. Enter Y to accept ")
-                    if accept_empty.lower() == 'y':
+            if not entry.title:
+                while True:
+                    entry.title = getpass._raw_input('Entry\'s title: ')
+                    if entry.title == "":
+                        accept_empty = getpass._raw_input("Entry is empty. Enter Y to accept ")
+                        if accept_empty.lower() == 'y':
+                            break
+                    else:
                         break
-                else:
-                    break
-            entry.group = getpass._raw_input('Entry\'s group: ')
-            entry.user = getpass._raw_input('Username: ')
+            if not entry.group:
+                entry.group = getpass._raw_input('Entry\'s group: ')
+            if not entry.user:
+                entry.user = getpass._raw_input('Username: ')
             entry.notes = getpass._raw_input('Entry\'s notes: ')
             entry.url = getpass._raw_input('Entry\'s url: ')
             entry.passwd = self.prompt_password()
@@ -372,9 +376,9 @@ class InteractiveConsole(cmd.Cmd):
         if len(match_records) > 1:
             print("Too many records matched your search criteria")
             for record in match_records:
-                print("[%s.%s] <%s>" % (record.group.encode('utf-8', 'replace'),
-                                      record.title.encode('utf-8', 'replace'),
-                                      record.user.encode('utf-8', 'replace')))
+                print("[%s.%s] <%s>" % (record.group,
+                                        record.title,
+                                        record.user))
             return
 
         if len(match_records) == 1:
@@ -382,7 +386,7 @@ class InteractiveConsole(cmd.Cmd):
             self.do_show(str(match_records[0].uuid), hide_password=True)
             try:
                 confirm_delete = getpass._raw_input("Confirm you want to delete the record by writing \"yes\": ")
-            except EOFError, KeyboardInterrupt:
+            except (EOFError, KeyboardInterrupt):
                 print("\nDelete cancelled...")
                 return
             if confirm_delete.lower() == 'yes':
@@ -415,9 +419,9 @@ class InteractiveConsole(cmd.Cmd):
             print("Too many records matched your search criteria.")
             if line:
                 for record in match_records:
-                    print("[%s.%s] [%s]" % (record.group.encode('utf-8', 'replace'),
-                                          record.title.encode('utf-8', 'replace'),
-                                          record.user.encode('utf-8', 'replace')))
+                    print("[%s.%s] [%s]" % (record.group,
+                                            record.title,
+                                            record.user))
             return
 
         vault_modified = False
@@ -427,8 +431,7 @@ class InteractiveConsole(cmd.Cmd):
         print("")
         if self.uuid is True:
             print('Uuid: [%s]' % str(record.uuid))
-        print("Modifying: [%s.%s]" % (record.group.encode('utf-8', 'replace'),
-              record.title.encode('utf-8', 'replace')))
+        print("Modifying: [%s.%s]" % (record.group, record.title))
         print("Enter a single dot (.) to clear the field, ^D to maintain the current entry.")
         print("")
 
@@ -438,7 +441,7 @@ class InteractiveConsole(cmd.Cmd):
             new_record['group'] = ""
             print("")
         except KeyboardInterrupt:
-            print(" pressed. Aborting modifications.")
+            print(" ^C pressed. Aborting modifications.")
             return
 
         if new_record['group'] == ".":
@@ -454,7 +457,7 @@ class InteractiveConsole(cmd.Cmd):
             new_record['title'] = ""
             print("")
         except KeyboardInterrupt:
-            print(" pressed. Aborting modifications.")
+            print(" ^C pressed. Aborting modifications.")
             return
 
         if new_record['title'] == ".":
@@ -470,7 +473,7 @@ class InteractiveConsole(cmd.Cmd):
             new_record['user'] = ""
             print("")
         except KeyboardInterrupt:
-            print(" pressed. Aborting modifications.")
+            print(" ^C pressed. Aborting modifications.")
             return
 
         if new_record['user'] == ".":
@@ -486,13 +489,13 @@ class InteractiveConsole(cmd.Cmd):
             new_record['password'] = record.passwd
             print("")
         except KeyboardInterrupt:
-            print(" pressed. Aborting modifications.")
+            print(" ^C pressed. Aborting modifications.")
             return
 
         if new_record['password'] != record.passwd:
             vault_modified = True
 
-        if record.notes.encode('utf-8', 'replace') != "":
+        if record.notes != "":
             print("[NOTES]")
             print('%s' % record.notes)
 
@@ -502,7 +505,7 @@ class InteractiveConsole(cmd.Cmd):
             new_record['notes'] = ""
             print("")
         except KeyboardInterrupt:
-            print(" pressed. Aborting modifications.")
+            print(" ^C pressed. Aborting modifications.")
             return
 
         if new_record['notes'] == ".":
@@ -518,7 +521,7 @@ class InteractiveConsole(cmd.Cmd):
             new_record['url'] = ""
             print("")
         except KeyboardInterrupt:
-            print(" pressed. Aborting modifications.")
+            print(" ^C pressed. Aborting modifications.")
             return
 
         if new_record['url'] == ".":
@@ -612,30 +615,30 @@ class InteractiveConsole(cmd.Cmd):
             print("    Last mod: modification time")
         print("-"*10)
         for record in vault_records:
-            print("[%s.%s] %s" % (record.group.encode('utf-8', 'replace'),
-                                  record.title.encode('utf-8', 'replace'),
-                                  record.user.encode('utf-8', 'replace')))
+            print("[%s.%s] %s" % (record.group,
+                                  record.title,
+                                  record.user))
             if self.verbose:
                 if record.url:
-                    print("    URL: %s" % (record.url.encode('utf-8', 'replace')))
+                    print("    URL: %s" % (record.url))
                 if record.notes:
-                    print("    Notes: %s" % (record.notes.encode('utf-8', 'replace')))
+                    print("    Notes: %s" % (record.notes))
                 if record.last_mod != 0:
                     print("    Last mod: %s" % time.strftime('%Y/%m/%d',time.gmtime(record.last_mod)))
 
         print("")
 
     def sort_matches(self, matches, nonmatches=None):
-        lambda_alpha = lambda e1, e2: cmp(".".join([e1.group, e1.title]), ".".join([e2.group, e2.title]))
-        lambda_mod = lambda e1, e2: cmp(e1.last_mod, e2.last_mod)
+        lambda_alpha = lambda e1: ".".join([e1.group, e1.title])
+        lambda_mod = lambda e1: e1.last_mod
         if not nonmatches:
             nonmatches = []
         if self.sort_key == 'alpha':
-            matches.sort(lambda_alpha)
-            nonmatches.sort(lambda_alpha)
+            matches.sort(key=lambda_alpha)
+            nonmatches.sort(key=lambda_alpha)
         elif self.sort_key == 'mod':
-            matches.sort(lambda_mod)
-            nonmatches.sort(lambda_mod)
+            matches.sort(key=lambda_mod)
+            nonmatches.sort(key=lambda_mod)
         return matches, nonmatches
 
     def do_output(self, line=None):
@@ -733,19 +736,19 @@ class InteractiveConsole(cmd.Cmd):
             if self.uuid:
                 print("[%s]" % record.uuid)
             print(("[%s.%s]\nUsername : %s""" %
-                (record.group.encode('utf-8', 'replace'),
-                 record.title.encode('utf-8', 'replace'),
-                 record.user.encode('utf-8', 'replace'))))
+                (record.group,
+                 record.title,
+                 record.user)))
 
             if self.echo or do_echo:
                 if not hide_password:
-                    print("Password : %s" % record.passwd.encode('utf-8', 'replace'))
+                    print("Password : %s" % record.passwd)
 
             if record.notes.strip():
-                print("Notes    : %s" % record.notes.encode('utf-8', 'replace'))
+                print("Notes    : %s" % record.notes)
 
             if record.url:
-                print("URL      : %s" % record.url.encode('utf-8', 'replace'))
+                print("URL      : %s" % record.url)
 
             if record.last_mod != 0:
                 print("Last mod : %s" % time.strftime('%Y/%m/%d', time.gmtime(record.last_mod)))

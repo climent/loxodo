@@ -33,7 +33,7 @@ class random_password(object):
                 character_list = character_list + v
         else:
             final_characters = self._characters.copy()
-            for k, v in password_policy.iteritems():
+            for k, v in password_policy.items():
                 if k == "L" and v[1] is False:
                     if 'lefthand' in final_characters:
                         final_characters.pop('lefthand')
@@ -63,7 +63,7 @@ class random_password(object):
                 if k == "S" and v[1] is False:
                     if 'symbols' in final_characters:
                         final_characters.pop('symbols')
-            for k, v in final_characters.iteritems():
+            for k, v in final_characters.items():
                 try:
                     character_list = character_list + v
                 except:

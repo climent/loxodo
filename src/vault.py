@@ -39,7 +39,12 @@ class Vault(object):
     """
     def __init__(self, password, filename=None):
 
-        assert type(password) == six.text_type
+        try:
+            assert type(password) == six.text_type
+        except (AssertionError, AttributeError) as e:
+            print(type(password))
+            print(six.text_type)
+            raise
 
         self.f_tag = None
         self.f_salt = None
@@ -407,10 +412,10 @@ class Vault(object):
 
     def export(self, password, filename):
         #self._read_from_file(filename, password)
-        print "# passwordsafe version 3.0 database"
-        print "uuid,group,name,login,passwd,notes,url"
+        print("# passwordsafe version 3.0 database")
+        print("uuid,group,name,login,passwd,notes,url")
         for record in self.records:
-            print str(record.uuid) + "," + record.group + "," + record.title + "," + record.user + "," + record.passwd + "," + record.notes + "," + record.url
+            print(str(record.uuid) + "," + record.group + "," + record.title + "," + record.user + "," + record.passwd + "," + record.notes + "," + record.url)
 
 
 

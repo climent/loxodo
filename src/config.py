@@ -42,7 +42,7 @@ class Config(object):
         self.avoid_bigrams = "cl mn nm nn rn vv VV"
 
         self._fname = self.get_config_filename()
-        print "Using config %s" % self._fname
+        print("Using config %s" % self._fname)
         self._parser = SafeConfigParser()
 
         if os.path.exists(self._fname):

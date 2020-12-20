@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 #
 # Loxodo -- Password Safe V3 compatible Password Vault
